@@ -18,6 +18,7 @@ export interface Unit {
   startVerse: number;
   endVerse: number;
   verses: Verse[];
+  sourceUrl?: string;
 }
 
 export interface SessionData {

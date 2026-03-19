@@ -16,11 +16,81 @@ const initialState: AppState = {
 };
 
 const STORAGE_KEY = 'torah-trainer-offline-state-v1';
+const DEFAULT_QUERY_UNIT_BOOK = 'Genesis';
+
+function normalizeUrl(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function getNextQueryUnitId(units: Unit[]): number {
+  return units.reduce((maxId, unit) => Math.max(maxId, Number(unit.id) || 0), 0) + 1;
+}
+
+function getNextQueryUnitName(units: Unit[]): string {
+  const prefix = 'יחידה מקישור ';
+  const maxSuffix = units.reduce((max, unit) => {
+    if (!unit.name?.startsWith(prefix)) return max;
+    const suffix = Number(unit.name.slice(prefix.length));
+    if (Number.isNaN(suffix)) return max;
+    return Math.max(max, suffix);
+  }, 0);
+  return `${prefix}${maxSuffix + 1}`;
+}
+
+function createUrlUnit(sourceUrl: string, units: Unit[]): Unit {
+  return {
+    id: getNextQueryUnitId(units),
+    name: getNextQueryUnitName(units),
+    book: DEFAULT_QUERY_UNIT_BOOK,
+    chapter: 1,
+    startVerse: 1,
+    endVerse: 1,
+    verses: [{ text: "נטען מקישור...", sections: [], audioUrl: null }],
+    sourceUrl,
+  };
+}
+
+function applyUnitFromQuery(state: AppState): AppState {
+  if (typeof window === 'undefined') return state;
+  const unitParam = new URLSearchParams(window.location.search).get('unit');
+  if (!unitParam) return state;
+
+  const normalizedUrl = normalizeUrl(unitParam);
+  if (!normalizedUrl) return state;
+
+  const existingIndex = state.units.findIndex(unit => unit.sourceUrl === normalizedUrl);
+  if (existingIndex !== -1) {
+    return {
+      ...state,
+      activeStudentUnitIndex: existingIndex,
+      currentVerseIndex: 0,
+      verseFeedback: [],
+    };
+  }
+
+  const units = [...state.units, createUrlUnit(normalizedUrl, state.units)];
+  const newIndex = units.length - 1;
+  return {
+    ...state,
+    units,
+    activeStudentUnitIndex: newIndex,
+    currentVerseIndex: 0,
+    verseFeedback: [],
+  };
+}
 
 function loadPersistedState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return initialState;
+    if (!raw) return applyUnitFromQuery(initialState);
     const parsed = JSON.parse(raw) as Partial<AppState>;
     const units = Array.isArray(parsed.units) ? parsed.units : initialState.units;
     const maxIndex = Math.max(units.length - 1, 0);
@@ -36,8 +106,9 @@ function loadPersistedState(): AppState {
       history: parsed.history || initialState.history,
       verseFeedback: Array.isArray(parsed.verseFeedback) ? parsed.verseFeedback : [],
     };
+    return applyUnitFromQuery(hydratedState);
   } catch {
-    return initialState;
+    return applyUnitFromQuery(initialState);
   }
 }
 
