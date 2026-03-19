@@ -54,6 +54,31 @@ const initialState: AppState = {
   history: generateMockHistory(),
 };
 
+const STORAGE_KEY = 'torah-trainer-offline-state-v1';
+
+function loadPersistedState(): AppState {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return initialState;
+    const parsed = JSON.parse(raw) as Partial<AppState>;
+    const units = Array.isArray(parsed.units) && parsed.units.length > 0 ? parsed.units : initialState.units;
+    const activeStudentUnitIndex = Math.min(Math.max(Number(parsed.activeStudentUnitIndex) || 0, 0), units.length - 1);
+    const activeAdminUnitIndex = Math.min(Math.max(Number(parsed.activeAdminUnitIndex) || 0, 0), units.length - 1);
+    return {
+      ...initialState,
+      ...parsed,
+      units,
+      activeStudentUnitIndex,
+      activeAdminUnitIndex,
+      currentSession: parsed.currentSession || initialState.currentSession,
+      history: parsed.history || initialState.history,
+      verseFeedback: Array.isArray(parsed.verseFeedback) ? parsed.verseFeedback : [],
+    };
+  } catch {
+    return initialState;
+  }
+}
+
 interface AppContextType {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -68,7 +93,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AppState>(initialState);
+  const [state, setState] = useState<AppState>(() => loadPersistedState());
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -89,6 +114,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }, 1000);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      // Ignore storage errors (quota/private mode)
+    }
+  }, [state]);
 
   const stopAnyAudio = useCallback(() => {
     if (activeAudioRef.current) {

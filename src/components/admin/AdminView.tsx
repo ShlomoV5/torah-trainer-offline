@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { toHebrewLetter, BOOK_OPTIONS } from '@/utils/hebrew';
 import { Plus, Trash2, FileDown, FileUp, Mic, Square, Upload, Play, Scissors } from 'lucide-react';
@@ -71,6 +71,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchRequestIdRef = useRef(0);
   // Use ref for editingVerseIdx to avoid stale closures in recording callbacks
   const editingVerseIdxRef = useRef(editingVerseIdx);
   editingVerseIdxRef.current = editingVerseIdx;
@@ -78,23 +79,8 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   const unit = state.units[state.activeAdminUnitIndex];
   const verse = unit?.verses?.[editingVerseIdx];
 
-  const updateUnit = (key: string, value: any) => {
-    setState(prev => {
-      const units = [...prev.units];
-      const u = { ...units[prev.activeAdminUnitIndex] };
-      (u as any)[key] = key === 'name' || key === 'book' ? value : parseInt(value);
-      units[prev.activeAdminUnitIndex] = u;
-      return { ...prev, units };
-    });
-    if (key !== 'name') {
-      setFetchStatus('שואב...');
-      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
-      fetchTimeoutRef.current = setTimeout(() => autoFetchVerses(), 600);
-    }
-  };
-
-  const autoFetchVerses = async () => {
-    const u = state.units[state.activeAdminUnitIndex];
+  const autoFetchVerses = async (unitIndex: number, unitSnapshot: typeof unit, requestId: number) => {
+    const u = unitSnapshot;
     if (!u || u.startVerse > u.endVerse) {
       setFetchStatus('שגיאה בטווח');
       return;
@@ -103,6 +89,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       const response = await fetch(`https://www.sefaria.org/api/texts/${u.book}_${u.chapter}?context=0`);
       if (!response.ok) throw new Error('שגיאה');
       const data = await response.json();
+      if (requestId !== fetchRequestIdRef.current) return;
       if (!data.he || !Array.isArray(data.he)) throw new Error('פרק אינו קיים');
       const newVerses = [];
       for (let i = u.startVerse; i <= u.endVerse; i++) {
@@ -115,8 +102,9 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
         }
       }
       setState(prev => {
+        if (!prev.units[unitIndex]) return prev;
         const units = [...prev.units];
-        units[prev.activeAdminUnitIndex] = { ...units[prev.activeAdminUnitIndex], verses: newVerses };
+        units[unitIndex] = { ...units[unitIndex], verses: newVerses };
         return { ...prev, units };
       });
       setEditingVerseIdx(0);
@@ -125,6 +113,33 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       setFetchStatus('שגיאה');
     }
   };
+
+  const updateUnit = (key: string, value: any) => {
+    if (!unit) return;
+    const parsedValue = key === 'name' || key === 'book' ? value : parseInt(value);
+    const nextUnitIndex = state.activeAdminUnitIndex;
+    const nextUnit = { ...unit, [key]: parsedValue };
+    setState(prev => {
+      const units = [...prev.units];
+      const u = { ...units[prev.activeAdminUnitIndex] };
+      (u as any)[key] = parsedValue;
+      units[prev.activeAdminUnitIndex] = u;
+      return { ...prev, units };
+    });
+    if (key !== 'name') {
+      setFetchStatus('שואב...');
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      fetchRequestIdRef.current += 1;
+      const requestId = fetchRequestIdRef.current;
+      fetchTimeoutRef.current = setTimeout(() => autoFetchVerses(nextUnitIndex, nextUnit, requestId), 600);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+    };
+  }, []);
 
   const createNewUnit = () => {
     setState(prev => {

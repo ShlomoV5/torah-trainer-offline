@@ -1,17 +1,36 @@
 import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { X, Lock, CloudDownload } from 'lucide-react';
+import { Unit } from '@/types/app';
+import { X, Lock, CloudDownload, FileUp } from 'lucide-react';
 
 interface Props {
   onClose: () => void;
 }
 
 export default function SettingsModal({ onClose }: Props) {
-  const { state, setState, stopAnyAudio } = useApp();
+  const { setState } = useApp();
   const [password, setPassword] = useState('');
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showAdmin, setShowAdmin] = useState(false);
+
+  const applyImportedUnits = (data: unknown) => {
+    if (!Array.isArray(data)) throw new Error('פורמט קובץ לא תקין - נדרש מערך JSON של יחידות');
+    const importedUnits = data as Unit[];
+    if (importedUnits.length === 0) throw new Error('הקובץ ריק');
+    setState(prev => {
+      const appendedStart = prev.units.length;
+      return {
+        ...prev,
+        units: [...prev.units, ...importedUnits],
+        activeStudentUnitIndex: appendedStart,
+        activeAdminUnitIndex: appendedStart,
+        currentVerseIndex: 0,
+        verseFeedback: [],
+      };
+    });
+    onClose();
+    alert(`נטענו ${importedUnits.length} יחידות בהצלחה!`);
+  };
 
   const loadFromUrl = async () => {
     if (!url) return alert('נא להזין כתובת');
@@ -20,26 +39,30 @@ export default function SettingsModal({ onClose }: Props) {
       const response = await fetch(url);
       if (!response.ok) throw new Error('שגיאה בתקשורת');
       const data = await response.json();
-      if (!Array.isArray(data)) throw new Error('פורמט קובץ לא תקין');
-      setState(prev => ({ ...prev, units: data, activeStudentUnitIndex: 0, currentVerseIndex: 0, verseFeedback: [] }));
-      onClose();
-      alert('הנתונים נטענו בהצלחה!');
-    } catch (e: any) {
-      alert('שגיאה בטעינת הנתונים: ' + e.message);
+      applyImportedUnits(data);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'שגיאה לא ידועה';
+      alert('שגיאה בטעינת הנתונים: ' + message);
     } finally {
       setLoading(false);
     }
   };
 
-  const checkLogin = () => {
-    if (password === '1234') {
-      stopAnyAudio();
-      setPassword('');
-      onClose();
-      setShowAdmin(true);
-    } else {
-      alert('סיסמה שגויה');
-    }
+  const importFromFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        applyImportedUnits(data);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'שגיאה לא ידועה';
+        alert('שגיאה בטעינת הקובץ: ' + message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
   };
 
   // If admin should be shown, we dispatch an event
@@ -83,6 +106,10 @@ export default function SettingsModal({ onClose }: Props) {
           >
             {loading ? 'טוען...' : 'טען נתונים'}
           </button>
+          <label className="mt-2 w-full inline-flex items-center justify-center gap-1 bg-card border border-border py-2 rounded-lg text-sm font-bold hover:bg-muted cursor-pointer transition">
+            <FileUp size={14} /> ייבוא מקובץ
+            <input type="file" accept=".json,application/json" onChange={importFromFile} className="hidden" />
+          </label>
         </div>
 
         <hr className="my-4 border-border" />
