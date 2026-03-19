@@ -91,7 +91,6 @@ export default function SettingsModal({ onClose }: Props) {
           <h3 className="text-sm font-bold text-foreground mb-2 flex items-center gap-1">
             <Lock size={16} /> כניסת מנהל עריכה
           </h3>
-          <p className="text-[10px] text-muted-foreground mb-2">(סיסמה לאבטיפוס: 1234)</p>
           <input
             type="password"
             value={password}
