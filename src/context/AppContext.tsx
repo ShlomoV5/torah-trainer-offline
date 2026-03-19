@@ -55,6 +55,7 @@ const initialState: AppState = {
 };
 
 const STORAGE_KEY = 'torah-trainer-offline-state-v1';
+const DEFAULT_QUERY_UNIT_BOOK = 'Genesis';
 
 function normalizeUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim();
@@ -68,15 +69,30 @@ function normalizeUrl(rawUrl: string): string | null {
   }
 }
 
-function createUrlUnit(sourceUrl: string, existingUnitsCount: number): Unit {
+function getNextQueryUnitId(units: Unit[]): number {
+  return units.reduce((maxId, unit) => Math.max(maxId, Number(unit.id) || 0), 0) + 1;
+}
+
+function getNextQueryUnitName(units: Unit[]): string {
+  const prefix = 'יחידה מקישור ';
+  const maxSuffix = units.reduce((max, unit) => {
+    if (!unit.name?.startsWith(prefix)) return max;
+    const suffix = Number(unit.name.slice(prefix.length));
+    if (Number.isNaN(suffix)) return max;
+    return Math.max(max, suffix);
+  }, 0);
+  return `${prefix}${maxSuffix + 1}`;
+}
+
+function createUrlUnit(sourceUrl: string, units: Unit[]): Unit {
   return {
-    id: Date.now(),
-    name: `יחידה מקישור ${existingUnitsCount + 1}`,
-    book: "Genesis",
+    id: getNextQueryUnitId(units),
+    name: getNextQueryUnitName(units),
+    book: DEFAULT_QUERY_UNIT_BOOK,
     chapter: 1,
     startVerse: 1,
     endVerse: 1,
-    verses: [{ text: "פסוק לדוגמה", sections: [], audioUrl: null }],
+    verses: [{ text: "נטען מקישור...", sections: [], audioUrl: null }],
     sourceUrl,
   };
 }
@@ -94,19 +110,17 @@ function applyUnitFromQuery(state: AppState): AppState {
     return {
       ...state,
       activeStudentUnitIndex: existingIndex,
-      activeAdminUnitIndex: existingIndex,
       currentVerseIndex: 0,
       verseFeedback: [],
     };
   }
 
-  const units = [...state.units, createUrlUnit(normalizedUrl, state.units.length)];
+  const units = [...state.units, createUrlUnit(normalizedUrl, state.units)];
   const newIndex = units.length - 1;
   return {
     ...state,
     units,
     activeStudentUnitIndex: newIndex,
-    activeAdminUnitIndex: newIndex,
     currentVerseIndex: 0,
     verseFeedback: [],
   };

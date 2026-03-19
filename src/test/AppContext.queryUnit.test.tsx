@@ -60,7 +60,7 @@ describe('AppContext query unit loading', () => {
         },
         {
           id: 2,
-          name: 'יחידה מקישור',
+          name: 'יחידה מקישור 1',
           book: 'Genesis',
           chapter: 1,
           startVerse: 1,
