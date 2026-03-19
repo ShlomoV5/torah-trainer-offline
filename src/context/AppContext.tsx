@@ -96,7 +96,7 @@ function loadPersistedState(): AppState {
     const maxIndex = Math.max(units.length - 1, 0);
     const activeStudentUnitIndex = Math.min(Math.max(Number(parsed.activeStudentUnitIndex) || 0, 0), maxIndex);
     const activeAdminUnitIndex = Math.min(Math.max(Number(parsed.activeAdminUnitIndex) || 0, 0), maxIndex);
-    return {
+    const hydratedState: AppState = {
       ...initialState,
       ...parsed,
       units,
