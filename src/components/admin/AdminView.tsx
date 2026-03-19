@@ -1,7 +1,65 @@
 import { useState, useRef, useCallback } from 'react';
 import { useApp } from '@/context/AppContext';
 import { toHebrewLetter, BOOK_OPTIONS } from '@/utils/hebrew';
-import { Plus, Trash2, FileDown, FileUp, Mic, Square, Upload, Play, X, Scissors } from 'lucide-react';
+import { Plus, Trash2, FileDown, FileUp, Mic, Square, Upload, Play, Scissors } from 'lucide-react';
+
+// Audio block component - extracted outside to avoid remount issues
+function AudioBlock({ 
+  target, 
+  label, 
+  audioUrl, 
+  isRecording, 
+  onToggleRecording, 
+  onUpload, 
+  onPlay, 
+  onDelete 
+}: { 
+  target: 'full' | number; 
+  label: string; 
+  audioUrl: string | null; 
+  isRecording: boolean;
+  onToggleRecording: () => void;
+  onUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onPlay: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="bg-muted p-3 rounded-lg border border-border">
+      <div className="flex justify-between items-center mb-2">
+        <span className="font-bold text-foreground text-sm">{label}</span>
+        {audioUrl ? (
+          <span className="text-xs bg-feedback-excellent-light text-feedback-excellent px-2 py-1 rounded-full">✓ שמע נשמר</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">אין שמע</span>
+        )}
+      </div>
+      <div className="flex gap-2 flex-wrap items-center">
+        <button
+          onClick={onToggleRecording}
+          className={`px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1 ${
+            isRecording ? 'bg-destructive text-destructive-foreground recording-pulse' : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+          }`}
+        >
+          {isRecording ? <><Square size={12} /> עצור הקלטה</> : <><Mic size={12} /> הקלט</>}
+        </button>
+        <label className="bg-card text-muted-foreground border border-border px-3 py-1.5 rounded-md text-xs font-bold hover:bg-muted cursor-pointer flex items-center gap-1">
+          <Upload size={12} /> העלה קובץ
+          <input type="file" accept="audio/*" onChange={onUpload} className="hidden" />
+        </label>
+        {audioUrl && (
+          <>
+            <button onClick={onPlay} className="bg-secondary text-secondary-foreground px-3 py-1.5 rounded-md text-xs font-bold hover:bg-secondary/80 flex items-center gap-1">
+              <Play size={12} /> נגן
+            </button>
+            <button onClick={onDelete} className="bg-muted text-muted-foreground px-3 py-1.5 rounded-md text-xs hover:bg-destructive/10 hover:text-destructive flex items-center gap-1">
+              <Trash2 size={12} />
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminView({ onExit }: { onExit: () => void }) {
   const { state, setState, stopAnyAudio, playAudioUrl } = useApp();
@@ -13,17 +71,12 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Use ref for editingVerseIdx to avoid stale closures in recording callbacks
+  const editingVerseIdxRef = useRef(editingVerseIdx);
+  editingVerseIdxRef.current = editingVerseIdx;
 
   const unit = state.units[state.activeAdminUnitIndex];
   const verse = unit?.verses?.[editingVerseIdx];
-
-  const refreshVerseIdx = useCallback((newState?: typeof state) => {
-    const s = newState || state;
-    const u = s.units[s.activeAdminUnitIndex];
-    if (u?.verses?.length && editingVerseIdx >= u.verses.length) {
-      setEditingVerseIdx(0);
-    }
-  }, [state, editingVerseIdx]);
 
   const updateUnit = (key: string, value: any) => {
     setState(prev => {
@@ -134,41 +187,34 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
     });
   };
 
-  // Audio functions
-  const saveAudioData = (target: 'full' | number, dataUrl: string) => {
+  // Audio functions - uses ref to avoid stale closure
+  const saveAudioData = useCallback((target: number, dataUrl: string) => {
+    const vIdx = editingVerseIdxRef.current;
     setState(prev => {
       const units = [...prev.units];
       const u = { ...units[prev.activeAdminUnitIndex] };
       const verses = [...u.verses];
-      const v = { ...verses[editingVerseIdx] };
-      if (target === 'full') {
-        v.audioUrl = dataUrl;
-      } else {
-        const sections = [...v.sections];
-        sections[target] = { ...sections[target], audioUrl: dataUrl };
-        v.sections = sections;
-      }
-      verses[editingVerseIdx] = v;
+      const v = { ...verses[vIdx] };
+      const sections = [...v.sections];
+      sections[target] = { ...sections[target], audioUrl: dataUrl };
+      v.sections = sections;
+      verses[vIdx] = v;
       u.verses = verses;
       units[prev.activeAdminUnitIndex] = u;
       return { ...prev, units };
     });
-  };
+  }, [setState]);
 
-  const deleteAudio = (target: 'full' | number) => {
+  const deleteAudio = (target: number) => {
     if (!confirm('למחוק את קובץ השמע?')) return;
     setState(prev => {
       const units = [...prev.units];
       const u = { ...units[prev.activeAdminUnitIndex] };
       const verses = [...u.verses];
       const v = { ...verses[editingVerseIdx] };
-      if (target === 'full') {
-        v.audioUrl = null;
-      } else {
-        const sections = [...v.sections];
-        sections[target] = { ...sections[target], audioUrl: null };
-        v.sections = sections;
-      }
+      const sections = [...v.sections];
+      sections[target] = { ...sections[target], audioUrl: null };
+      v.sections = sections;
       verses[editingVerseIdx] = v;
       u.verses = verses;
       units[prev.activeAdminUnitIndex] = u;
@@ -176,7 +222,8 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
     });
   };
 
-  const toggleRecording = async (target: 'full' | number) => {
+  // CRITICAL: getUserMedia called directly in click handler
+  const toggleRecording = async (target: number) => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
       streamRef.current?.getTracks().forEach(t => t.stop());
@@ -185,32 +232,51 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
     }
     try {
       stopAnyAudio();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // getUserMedia called directly from user click handler
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 44100,
+        } 
+      });
       streamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
+      
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const recorder = new MediaRecorder(stream, { mimeType });
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
       setRecordingTarget(target);
 
       recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current);
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
-        reader.onloadend = () => saveAudioData(target, reader.result as string);
+        reader.onloadend = () => {
+          saveAudioData(target, reader.result as string);
+        };
       };
       recorder.start();
     } catch (err: any) {
-      alert("לא ניתן לגשת למיקרופון: " + err.message);
+      if (err.name === 'NotAllowedError') {
+        alert("גישה למיקרופון נדחתה. אנא אשר הרשאה בדפדפן.");
+      } else {
+        alert("לא ניתן לגשת למיקרופון: " + err.message);
+      }
     }
   };
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>, target: 'full' | number) => {
+  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>, target: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => saveAudioData(target, ev.target?.result as string);
+    reader.onload = ev => {
+      saveAudioData(target, ev.target?.result as string);
+    };
     reader.readAsDataURL(file);
+    // Reset the input so the same file can be uploaded again
+    e.target.value = '';
   };
 
   // Export/Import
@@ -243,49 +309,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   };
 
   const words = verse?.text?.split(' ') || [];
-
-  // Generate chapter/verse options
   const chapterOptions = Array.from({ length: 150 }, (_, i) => i + 1);
-
-  const AudioBlock = ({ target, label, audioUrl }: { target: 'full' | number; label: string; audioUrl: string | null }) => {
-    const isRec = recordingTarget === target;
-    return (
-      <div className="bg-muted p-3 rounded-lg border border-border">
-        <div className="flex justify-between items-center mb-2">
-          <span className="font-bold text-foreground text-sm">{label}</span>
-          {audioUrl ? (
-            <span className="text-xs bg-feedback-excellent-light text-feedback-excellent px-2 py-1 rounded-full">✓ שמע נשמר</span>
-          ) : (
-            <span className="text-xs text-muted-foreground">אין שמע</span>
-          )}
-        </div>
-        <div className="flex gap-2 flex-wrap items-center">
-          <button
-            onClick={() => toggleRecording(target)}
-            className={`px-3 py-1.5 rounded-md text-xs font-bold transition flex items-center gap-1 ${
-              isRec ? 'bg-destructive text-destructive-foreground recording-pulse' : 'bg-destructive/10 text-destructive hover:bg-destructive/20'
-            }`}
-          >
-            {isRec ? <><Square size={12} /> עצור הקלטה</> : <><Mic size={12} /> הקלט</>}
-          </button>
-          <label className="bg-card text-muted-foreground border border-border px-3 py-1.5 rounded-md text-xs font-bold hover:bg-muted cursor-pointer flex items-center gap-1">
-            <Upload size={12} /> העלה קובץ
-            <input type="file" accept="audio/*" onChange={e => handleUpload(e, target)} className="hidden" />
-          </label>
-          {audioUrl && (
-            <>
-              <button onClick={() => playAudioUrl(audioUrl)} className="bg-secondary text-secondary-foreground px-3 py-1.5 rounded-md text-xs font-bold hover:bg-secondary/80 flex items-center gap-1">
-                <Play size={12} /> נגן
-              </button>
-              <button onClick={() => deleteAudio(target)} className="bg-muted text-muted-foreground px-3 py-1.5 rounded-md text-xs hover:bg-destructive/10 hover:text-destructive flex items-center gap-1">
-                <Trash2 size={12} />
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  };
 
   return (
     <div className="absolute inset-0 bg-card z-40 flex flex-col h-full overflow-hidden" dir="rtl">
@@ -403,7 +427,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
               כדי ליצור קטע, לחץ על מילת ההתחלה ועל מילת הסיום.
             </div>
 
-            <div className="border border-border p-4 rounded-lg bg-muted mb-4 text-center leading-normal" dir="rtl" style={{ fontFamily: "'Heebo', serif", fontSize: '2rem', fontWeight: 700 }}>
+            <div className="border border-border p-4 rounded-lg bg-muted mb-4 text-center leading-normal" dir="rtl" style={{ fontFamily: "'Taamey David', 'Heebo', serif", fontSize: '2rem', fontWeight: 700 }}>
               {words.map((word, i) => {
                 const secIdx = (verse.sections || []).findIndex(s => i >= s.start && i <= s.end);
                 let extraClass = '';
@@ -437,12 +461,23 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
               <h4 className="font-bold text-sm flex items-center gap-1">
                 <Play size={14} className="text-primary" /> קובצי שמע והקלטות:
               </h4>
-              <AudioBlock target="full" label="פסוק שלם" audioUrl={verse.audioUrl || null} />
               {verse.sections.length > 0 ? (
                 verse.sections.map((sec, idx) => {
                   const secWords = words.slice(sec.start, sec.end + 1).join(' ');
                   const shortText = secWords.length > 15 ? secWords.substring(0, 15) + '...' : secWords;
-                  return <AudioBlock key={idx} target={idx} label={`קטע ${idx + 1}: ${shortText}`} audioUrl={sec.audioUrl} />;
+                  return (
+                    <AudioBlock 
+                      key={idx} 
+                      target={idx} 
+                      label={`קטע ${idx + 1}: ${shortText}`} 
+                      audioUrl={sec.audioUrl}
+                      isRecording={recordingTarget === idx}
+                      onToggleRecording={() => toggleRecording(idx)}
+                      onUpload={(e) => handleUpload(e, idx)}
+                      onPlay={() => playAudioUrl(sec.audioUrl)}
+                      onDelete={() => deleteAudio(idx)}
+                    />
+                  );
                 })
               ) : (
                 <div className="text-xs text-muted-foreground p-2 text-center bg-muted rounded border border-dashed border-border">

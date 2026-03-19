@@ -1,5 +1,13 @@
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
 
+@font-face {
+  font-family: 'Taamey David';
+  src: url('/fonts/TaameyD.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,58 +16,41 @@
   :root {
     --background: 220 14% 96%;
     --foreground: 220 20% 15%;
-
     --card: 0 0% 100%;
     --card-foreground: 220 20% 15%;
-
     --popover: 0 0% 100%;
     --popover-foreground: 220 20% 15%;
-
     --primary: 221 80% 28%;
     --primary-foreground: 210 40% 98%;
-
     --secondary: 214 80% 95%;
     --secondary-foreground: 221 80% 28%;
-
     --muted: 220 14% 96%;
     --muted-foreground: 220 10% 46%;
-
     --accent: 214 80% 95%;
     --accent-foreground: 221 80% 28%;
-
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-
     --success: 152 69% 31%;
     --success-foreground: 0 0% 100%;
-
     --warning: 45 93% 47%;
     --warning-foreground: 0 0% 100%;
-
     --border: 220 13% 91%;
     --input: 220 13% 91%;
     --ring: 221 80% 28%;
-
     --radius: 1rem;
-
     --header-bg: 221 80% 28%;
     --header-foreground: 210 40% 98%;
-
     --feedback-excellent: 152 69% 31%;
     --feedback-excellent-light: 152 69% 95%;
     --feedback-excellent-border: 152 69% 80%;
-
     --feedback-medium: 45 93% 47%;
     --feedback-medium-light: 45 93% 95%;
     --feedback-medium-border: 45 93% 80%;
-
     --feedback-improve: 0 72% 51%;
     --feedback-improve-light: 0 72% 95%;
     --feedback-improve-border: 0 72% 80%;
-
     --section-odd: 221 80% 28%;
     --section-even: 160 80% 20%;
-
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
@@ -119,7 +110,7 @@
 
 @layer components {
   .pasuk-font {
-    font-family: 'Heebo', serif;
+    font-family: 'Taamey David', 'Heebo', serif;
     font-size: 2.75rem;
     line-height: 1.6;
     font-weight: 700;
@@ -158,6 +149,7 @@
     @apply p-1 border rounded cursor-pointer inline-block;
     margin: 0.25rem 0.5rem;
     border-color: hsl(var(--border));
+    font-family: 'Taamey David', 'Heebo', serif;
   }
 
   .edit-word.selected-range {
@@ -196,7 +188,6 @@
     box-shadow: 0 0 20px hsl(var(--foreground) / 0.1);
   }
 
-  /* Custom scrollbar */
   .verse-scroll::-webkit-scrollbar {
     width: 6px;
   }

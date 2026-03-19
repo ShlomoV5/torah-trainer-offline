@@ -20,27 +20,45 @@ export default function StudentView() {
     if (playTimeoutRef.current) clearTimeout(playTimeoutRef.current);
   }, []);
 
+  // Play full verse by concatenating section audio sequentially
   const playCurrentVerse = useCallback(() => {
     if (!verse) return;
     clearPlaying();
-    if (verse.audioUrl) {
-      setPlayingWords(new Set(words.map((_, i) => i)));
-      playAudioUrl(verse.audioUrl, clearPlaying);
-    } else {
-      // Sequence highlight without audio
-      let idx = 0;
-      const step = () => {
-        setPlayingWords(new Set());
-        if (idx < words.length) {
-          setPlayingWords(new Set([idx]));
-          idx++;
-          playTimeoutRef.current = setTimeout(step, 500);
-        }
-      };
-      step();
-    }
-  }, [verse, words, playAudioUrl, clearPlaying]);
+    const sections = verse.sections || [];
+    
+    if (sections.length === 0) return; // No sections, nothing to play
 
+    let currentSectionIdx = 0;
+
+    const playNextSection = () => {
+      if (currentSectionIdx >= sections.length) {
+        clearPlaying();
+        return;
+      }
+      const sec = sections[currentSectionIdx];
+      // Mark entire section
+      const wordIndices = new Set<number>();
+      for (let i = sec.start; i <= sec.end; i++) wordIndices.add(i);
+      setPlayingWords(wordIndices);
+
+      if (sec.audioUrl) {
+        playAudioUrl(sec.audioUrl, () => {
+          currentSectionIdx++;
+          playNextSection();
+        });
+      } else {
+        // No audio for this section - briefly highlight then move on
+        setTimeout(() => {
+          currentSectionIdx++;
+          playNextSection();
+        }, 1000);
+      }
+    };
+
+    playNextSection();
+  }, [verse, playAudioUrl, clearPlaying]);
+
+  // Play a single section - mark ALL words in section
   const playSection = useCallback((sectionIndex: number) => {
     if (!verse) return;
     clearPlaying();
@@ -48,20 +66,12 @@ export default function StudentView() {
     const wordIndices = new Set<number>();
     for (let i = sec.start; i <= sec.end; i++) wordIndices.add(i);
     
+    setPlayingWords(wordIndices);
     if (sec.audioUrl) {
-      setPlayingWords(wordIndices);
       playAudioUrl(sec.audioUrl, clearPlaying);
     } else {
-      let idx = sec.start;
-      const step = () => {
-        setPlayingWords(new Set());
-        if (idx <= sec.end) {
-          setPlayingWords(new Set([idx]));
-          idx++;
-          playTimeoutRef.current = setTimeout(step, 500);
-        }
-      };
-      step();
+      // No audio - just highlight briefly
+      setTimeout(clearPlaying, 1500);
     }
   }, [verse, playAudioUrl, clearPlaying]);
 
