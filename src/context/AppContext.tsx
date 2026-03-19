@@ -56,15 +56,71 @@ const initialState: AppState = {
 
 const STORAGE_KEY = 'torah-trainer-offline-state-v1';
 
+function normalizeUrl(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function createUrlUnit(sourceUrl: string, existingUnitsCount: number): Unit {
+  return {
+    id: Date.now(),
+    name: `יחידה מקישור ${existingUnitsCount + 1}`,
+    book: "Genesis",
+    chapter: 1,
+    startVerse: 1,
+    endVerse: 1,
+    verses: [{ text: "פסוק לדוגמה", sections: [], audioUrl: null }],
+    sourceUrl,
+  };
+}
+
+function applyUnitFromQuery(state: AppState): AppState {
+  if (typeof window === 'undefined') return state;
+  const unitParam = new URLSearchParams(window.location.search).get('unit');
+  if (!unitParam) return state;
+
+  const normalizedUrl = normalizeUrl(unitParam);
+  if (!normalizedUrl) return state;
+
+  const existingIndex = state.units.findIndex(unit => unit.sourceUrl === normalizedUrl);
+  if (existingIndex !== -1) {
+    return {
+      ...state,
+      activeStudentUnitIndex: existingIndex,
+      activeAdminUnitIndex: existingIndex,
+      currentVerseIndex: 0,
+      verseFeedback: [],
+    };
+  }
+
+  const units = [...state.units, createUrlUnit(normalizedUrl, state.units.length)];
+  const newIndex = units.length - 1;
+  return {
+    ...state,
+    units,
+    activeStudentUnitIndex: newIndex,
+    activeAdminUnitIndex: newIndex,
+    currentVerseIndex: 0,
+    verseFeedback: [],
+  };
+}
+
 function loadPersistedState(): AppState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return initialState;
+    if (!raw) return applyUnitFromQuery(initialState);
     const parsed = JSON.parse(raw) as Partial<AppState>;
     const units = Array.isArray(parsed.units) && parsed.units.length > 0 ? parsed.units : initialState.units;
     const activeStudentUnitIndex = Math.min(Math.max(Number(parsed.activeStudentUnitIndex) || 0, 0), units.length - 1);
     const activeAdminUnitIndex = Math.min(Math.max(Number(parsed.activeAdminUnitIndex) || 0, 0), units.length - 1);
-    return {
+    const hydratedState = {
       ...initialState,
       ...parsed,
       units,
@@ -74,8 +130,9 @@ function loadPersistedState(): AppState {
       history: parsed.history || initialState.history,
       verseFeedback: Array.isArray(parsed.verseFeedback) ? parsed.verseFeedback : [],
     };
+    return applyUnitFromQuery(hydratedState);
   } catch {
-    return initialState;
+    return applyUnitFromQuery(initialState);
   }
 }
 
