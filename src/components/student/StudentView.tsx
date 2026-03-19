@@ -131,8 +131,27 @@ export default function StudentView() {
 
   const timerDisplay = `${String(state.currentSession.minutes).padStart(2, '0')}:${String(state.currentSession.practiceSeconds % 60).padStart(2, '0')}`;
   const currentFeedback = state.verseFeedback[state.currentVerseIndex];
+  const settingsModal = showSettings ? <SettingsModal onClose={() => setShowSettings(false)} /> : null;
 
-  if (!unit) return <div className="flex h-full items-center justify-center text-muted-foreground">אין יחידות לימוד</div>;
+  if (!unit) {
+    return (
+      <>
+        <div className="flex h-full items-center justify-center text-muted-foreground text-center px-6" dir="rtl">
+          <p>
+            לא נטענה יחידת לימוד, לחץ{' '}
+            <button
+              onClick={() => setShowSettings(true)}
+              className="text-primary underline font-bold hover:opacity-80 transition"
+            >
+              כאן
+            </button>{' '}
+            כדי לטעון
+          </p>
+        </div>
+        {settingsModal}
+      </>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden" dir="rtl">
@@ -291,7 +310,7 @@ export default function StudentView() {
       </div>
 
       {showStats && <StatsModal onClose={() => setShowStats(false)} />}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {settingsModal}
     </div>
   );
 }

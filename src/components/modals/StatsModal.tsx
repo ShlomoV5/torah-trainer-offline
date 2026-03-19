@@ -94,9 +94,9 @@ export default function StatsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="mb-6">
-          <div className="text-xs font-bold text-muted-foreground mb-2 flex justify-between">
+          <div className="text-sm font-bold text-muted-foreground mb-2 flex justify-between items-end">
             <span>דקות לימוד</span>
-            <span className="text-primary font-bold">סה"כ: {stats.totalMinutes}</span>
+            <span className="text-5xl font-black text-primary leading-none">{stats.totalMinutes}</span>
           </div>
           <div className="flex items-end justify-around h-32 gap-1 border-b-2 border-border pb-1">
             {stats.dailyData.map((item, i) => (
