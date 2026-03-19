@@ -2,56 +2,17 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import { AppState, Unit, FeedbackType, DayHistory } from '@/types/app';
 import { getDateString } from '@/utils/hebrew';
 
-function generateMockHistory(): Record<string, DayHistory> {
-  const history: Record<string, DayHistory> = {};
-  const today = new Date();
-  for (let i = 1; i <= 14; i++) {
-    const d = new Date();
-    d.setDate(today.getDate() - i);
-    history[getDateString(d)] = {
-      minutes: Math.floor(Math.random() * 20) + 5,
-      exc: Math.floor(Math.random() * 5) + 2,
-      med: Math.floor(Math.random() * 3),
-      imp: Math.floor(Math.random() * 2),
-    };
-  }
-  return history;
-}
-
-const defaultUnit: Unit = {
-  id: 1,
-  name: "פרשת בראשית",
-  book: "Genesis",
-  chapter: 1,
-  startVerse: 1,
-  endVerse: 3,
-  verses: [
-    {
-      text: "בְּרֵאשִׁ֖ית בָּרָ֣א אֱלֹהִ֑ים אֵ֥ת הַשָּׁמַ֖יִם וְאֵ֥ת הָאָֽרֶץ׃",
-      sections: [{ start: 0, end: 2, audioUrl: null }, { start: 3, end: 6, audioUrl: null }],
-      audioUrl: null,
-    },
-    {
-      text: "וְהָאָ֗רֶץ הָיְתָ֥ה תֹ֙הוּ֙ וָבֹ֔הוּ וְחֹ֖שֶׁךְ עַל־פְּנֵ֣י תְה֑וֹם וְר֣וּחַ אֱלֹהִ֔ים מְרַחֶ֖פֶת עַל־פְּנֵ֥י הַמָּֽיִם׃",
-      sections: [],
-      audioUrl: null,
-    },
-    {
-      text: "וַיֹּ֥אמֶר אֱלֹהִ֖ים יְהִ֣י א֑וֹר וַֽיְהִי־אֽוֹר׃",
-      sections: [],
-      audioUrl: null,
-    },
-  ],
-};
+const initialUnits: Unit[] = [];
+const initialHistory: Record<string, DayHistory> = {};
 
 const initialState: AppState = {
-  units: [defaultUnit],
+  units: initialUnits,
   activeStudentUnitIndex: 0,
   activeAdminUnitIndex: 0,
   currentVerseIndex: 0,
   currentSession: { minutes: 0, practiceSeconds: 0, exc: 0, med: 0, imp: 0 },
   verseFeedback: [],
-  history: generateMockHistory(),
+  history: initialHistory,
 };
 
 const STORAGE_KEY = 'torah-trainer-offline-state-v1';
@@ -131,10 +92,11 @@ function loadPersistedState(): AppState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return applyUnitFromQuery(initialState);
     const parsed = JSON.parse(raw) as Partial<AppState>;
-    const units = Array.isArray(parsed.units) && parsed.units.length > 0 ? parsed.units : initialState.units;
-    const activeStudentUnitIndex = Math.min(Math.max(Number(parsed.activeStudentUnitIndex) || 0, 0), units.length - 1);
-    const activeAdminUnitIndex = Math.min(Math.max(Number(parsed.activeAdminUnitIndex) || 0, 0), units.length - 1);
-    const hydratedState = {
+    const units = Array.isArray(parsed.units) ? parsed.units : initialState.units;
+    const maxIndex = Math.max(units.length - 1, 0);
+    const activeStudentUnitIndex = Math.min(Math.max(Number(parsed.activeStudentUnitIndex) || 0, 0), maxIndex);
+    const activeAdminUnitIndex = Math.min(Math.max(Number(parsed.activeAdminUnitIndex) || 0, 0), maxIndex);
+    return {
       ...initialState,
       ...parsed,
       units,
