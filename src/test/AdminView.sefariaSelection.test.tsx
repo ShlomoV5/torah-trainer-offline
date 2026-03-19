@@ -6,6 +6,25 @@ import { AppProvider } from '@/context/AppContext';
 describe('AdminView Sefaria selection syncing', () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem('torah-trainer-offline-state-v1', JSON.stringify({
+      units: [
+        {
+          id: 1,
+          name: 'יחידה א',
+          book: 'Genesis',
+          chapter: 1,
+          startVerse: 1,
+          endVerse: 3,
+          verses: [{ text: 'א', sections: [], audioUrl: null }],
+        },
+      ],
+      activeStudentUnitIndex: 0,
+      activeAdminUnitIndex: 0,
+      currentVerseIndex: 0,
+      currentSession: { minutes: 0, practiceSeconds: 0, exc: 0, med: 0, imp: 0 },
+      verseFeedback: [],
+      history: {},
+    }));
     vi.useFakeTimers();
   });
 
