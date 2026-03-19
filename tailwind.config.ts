@@ -31,6 +31,14 @@ export default {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
@@ -46,6 +54,21 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
+        },
+        "feedback-excellent": "hsl(var(--feedback-excellent))",
+        "feedback-excellent-light": "hsl(var(--feedback-excellent-light))",
+        "feedback-excellent-border": "hsl(var(--feedback-excellent-border))",
+        "feedback-medium": "hsl(var(--feedback-medium))",
+        "feedback-medium-light": "hsl(var(--feedback-medium-light))",
+        "feedback-medium-border": "hsl(var(--feedback-medium-border))",
+        "feedback-improve": "hsl(var(--feedback-improve))",
+        "feedback-improve-light": "hsl(var(--feedback-improve-light))",
+        "feedback-improve-border": "hsl(var(--feedback-improve-border))",
+        "section-odd": "hsl(var(--section-odd))",
+        "section-even": "hsl(var(--section-even))",
+        header: {
+          DEFAULT: "hsl(var(--header-bg))",
+          foreground: "hsl(var(--header-foreground))",
         },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
