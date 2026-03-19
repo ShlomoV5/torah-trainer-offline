@@ -204,7 +204,7 @@ export default function StudentView() {
                 onClick={() => setFeedback('improve')}
                 className={`p-2 rounded-xl font-bold text-sm border-2 transition ${
                   currentFeedback === 'improve'
-                    ? 'bg-feedback-improve text-feedback-improve-foreground border-feedback-improve shadow-inner'
+                    ? 'bg-feedback-improve text-card border-feedback-improve shadow-inner'
                     : 'bg-card text-feedback-improve border-feedback-improve-border hover:bg-feedback-improve-light'
                 }`}
               >
