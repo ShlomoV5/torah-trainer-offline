@@ -36,14 +36,47 @@ describe('AppContext query unit loading', () => {
       </AppProvider>
     );
 
-    expect(screen.getByTestId('units-count')).toHaveTextContent('2');
+    expect(screen.getByTestId('units-count')).toHaveTextContent('1');
     expect(screen.getByTestId('active-unit-source')).toHaveTextContent(UNIT_URL);
 
     await waitFor(() => {
       const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) as string);
-      expect(parsed.units).toHaveLength(2);
-      expect(parsed.units[1].sourceUrl).toBe(UNIT_URL);
+      expect(parsed.units).toHaveLength(1);
+      expect(parsed.units[0].sourceUrl).toBe(UNIT_URL);
     });
+  });
+
+  it('applies ?unit= query param when persisted state exists but URL is not in it', () => {
+    const persistedState = {
+      units: [
+        {
+          id: 1,
+          name: 'פרשת בראשית',
+          book: 'Genesis',
+          chapter: 1,
+          startVerse: 1,
+          endVerse: 3,
+          verses: [{ text: 'א', sections: [], audioUrl: null }],
+        },
+      ],
+      activeStudentUnitIndex: 0,
+      activeAdminUnitIndex: 0,
+      currentVerseIndex: 0,
+      currentSession: { minutes: 0, practiceSeconds: 0, exc: 0, med: 0, imp: 0 },
+      verseFeedback: [],
+      history: {},
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistedState));
+    window.history.pushState({}, '', `/?unit=${encodeURIComponent(UNIT_URL)}`);
+
+    render(
+      <AppProvider>
+        <QueryUnitHarness />
+      </AppProvider>
+    );
+
+    expect(screen.getByTestId('units-count')).toHaveTextContent('2');
+    expect(screen.getByTestId('active-unit-source')).toHaveTextContent(UNIT_URL);
   });
 
   it('does not duplicate a query unit that already exists in local storage', () => {
