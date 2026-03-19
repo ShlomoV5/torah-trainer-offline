@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 import { AppState, Unit, FeedbackType, DayHistory } from '@/types/app';
 import { getDateString } from '@/utils/hebrew';
 
+export type ImportStatus = 'idle' | 'in-progress' | 'success' | 'failure';
+
 const initialUnits: Unit[] = [];
 const initialHistory: Record<string, DayHistory> = {};
 
@@ -17,6 +19,7 @@ const initialState: AppState = {
 
 const STORAGE_KEY = 'torah-trainer-offline-state-v1';
 const DEFAULT_QUERY_UNIT_BOOK = 'Genesis';
+const PLACEHOLDER_VERSE_TEXT = 'נטען מקישור...';
 
 function normalizeUrl(rawUrl: string): string | null {
   const trimmed = rawUrl.trim();
@@ -53,9 +56,26 @@ function createUrlUnit(sourceUrl: string, units: Unit[]): Unit {
     chapter: 1,
     startVerse: 1,
     endVerse: 1,
-    verses: [{ text: "נטען מקישור...", sections: [], audioUrl: null }],
+    verses: [{ text: PLACEHOLDER_VERSE_TEXT, sections: [], audioUrl: null }],
     sourceUrl,
   };
+}
+
+function validateImportedUnits(data: unknown): Unit[] {
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error('פורמט קובץ לא תקין - נדרש מערך JSON של יחידות');
+  }
+  for (const item of data) {
+    if (
+      typeof item !== 'object' || item === null ||
+      !('id' in item) || !('name' in item) || !('book' in item) ||
+      !('chapter' in item) || !('startVerse' in item) || !('endVerse' in item) ||
+      !('verses' in item) || !Array.isArray((item as Unit).verses)
+    ) {
+      throw new Error('פורמט קובץ לא תקין - חסרים שדות נדרשים ביחידה');
+    }
+  }
+  return data as Unit[];
 }
 
 function applyUnitFromQuery(state: AppState): AppState {
@@ -121,14 +141,88 @@ interface AppContextType {
   activeAudioRef: React.MutableRefObject<HTMLAudioElement | null>;
   stopAnyAudio: () => void;
   playAudioUrl: (url: string | null, onEnd?: () => void) => void;
+  importStatus: ImportStatus;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(() => loadPersistedState());
+  const [importStatus, setImportStatus] = useState<ImportStatus>('idle');
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Capture initial units at mount time so the import effect can check them
+  // without listing the full `state` in its dependency array (one-shot on mount only).
+  const initialUnitsRef = useRef(state.units);
+
+  // Deep-link import: fetch Unit[] from ?unit= query param on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const unitParam = new URLSearchParams(window.location.search).get('unit');
+    if (!unitParam) return;
+
+    const normalizedUrl = normalizeUrl(unitParam);
+    if (!normalizedUrl) return;
+
+    const controller = new AbortController();
+
+    const cleanQueryParam = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('unit');
+      window.history.replaceState({}, '', url.toString());
+    };
+
+    // Check if already imported with real content (non-placeholder)
+    const alreadyImported = initialUnitsRef.current.some(
+      u => u.sourceUrl === normalizedUrl && u.verses[0]?.text !== PLACEHOLDER_VERSE_TEXT
+    );
+    if (alreadyImported) {
+      cleanQueryParam();
+      return;
+    }
+
+    setImportStatus('in-progress');
+
+    const doImport = async () => {
+      try {
+        const response = await fetch(normalizedUrl, { signal: controller.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const importedUnits = validateImportedUnits(data).map(u => ({ ...u, sourceUrl: normalizedUrl }));
+
+        setState(prev => {
+          const filtered = prev.units.filter(
+            u => !(u.sourceUrl === normalizedUrl && u.verses[0]?.text === PLACEHOLDER_VERSE_TEXT)
+          );
+          const appendedStart = filtered.length;
+          return {
+            ...prev,
+            units: [...filtered, ...importedUnits],
+            activeStudentUnitIndex: appendedStart,
+            activeAdminUnitIndex: appendedStart,
+            currentVerseIndex: 0,
+            verseFeedback: [],
+          };
+        });
+        setImportStatus('success');
+        cleanQueryParam();
+      } catch (err) {
+        if ((err as Error)?.name === 'AbortError') return;
+        console.error('[torah-trainer] deep-link import failed:', err);
+        setState(prev => ({
+          ...prev,
+          units: prev.units.filter(
+            u => !(u.sourceUrl === normalizedUrl && u.verses[0]?.text === PLACEHOLDER_VERSE_TEXT)
+          ),
+        }));
+        setImportStatus('failure');
+        cleanQueryParam();
+      }
+    };
+
+    doImport();
+    return () => controller.abort();
+  }, []);
 
   // Timer
   useEffect(() => {
@@ -211,7 +305,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [stopAnyAudio]);
 
   return (
-    <AppContext.Provider value={{ state, setState, setFeedback, goToNextVerse, goToPrevVerse, activeAudioRef, stopAnyAudio, playAudioUrl }}>
+    <AppContext.Provider value={{ state, setState, setFeedback, goToNextVerse, goToPrevVerse, activeAudioRef, stopAnyAudio, playAudioUrl, importStatus }}>
       {children}
     </AppContext.Provider>
   );
