@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
-import { ChevronRight, ChevronLeft, Play, Clock, BarChart3, Settings } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Play, Clock, BarChart3, Settings, Plus, Trash2 } from 'lucide-react';
 import StatsModal from '@/components/modals/StatsModal';
 import SettingsModal from '@/components/modals/SettingsModal';
 
@@ -86,6 +86,49 @@ export default function StudentView() {
     }));
   };
 
+  const addUnit = () => {
+    const newUnit = {
+      id: Date.now(),
+      name: `יחידה ${state.units.length + 1}`,
+      book: 'Genesis',
+      chapter: 1,
+      startVerse: 1,
+      endVerse: 1,
+      verses: [{ text: 'פסוק לדוגמה', sections: [], audioUrl: null }],
+    };
+    setState(prev => ({
+      ...prev,
+      units: [...prev.units, newUnit],
+      activeStudentUnitIndex: prev.units.length,
+      activeAdminUnitIndex: prev.units.length,
+      currentVerseIndex: 0,
+      verseFeedback: [],
+    }));
+  };
+
+  const removeUnit = () => {
+    if (state.units.length <= 1) {
+      alert('לא ניתן למחוק את היחידה האחרונה.');
+      return;
+    }
+    if (!confirm('האם למחוק את היחידה הנוכחית?')) return;
+    const removedIndex = state.activeStudentUnitIndex;
+    setState(prev => {
+      const units = prev.units.filter((_, idx) => idx !== removedIndex);
+      const nextIndex = Math.min(removedIndex, units.length - 1);
+      return {
+        ...prev,
+        units,
+        activeStudentUnitIndex: nextIndex,
+        activeAdminUnitIndex: Math.min(prev.activeAdminUnitIndex, units.length - 1),
+        currentVerseIndex: 0,
+        verseFeedback: [],
+      };
+    });
+    stopAnyAudio();
+    clearPlaying();
+  };
+
   const timerDisplay = `${String(state.currentSession.minutes).padStart(2, '0')}:${String(state.currentSession.practiceSeconds % 60).padStart(2, '0')}`;
   const currentFeedback = state.verseFeedback[state.currentVerseIndex];
 
@@ -108,6 +151,22 @@ export default function StudentView() {
               <option key={u.id} value={idx}>{u.name}</option>
             ))}
           </select>
+          <button
+            onClick={addUnit}
+            className="opacity-70 hover:opacity-100 flex-shrink-0 text-lg"
+            title="הוסף יחידה"
+            aria-label="הוסף יחידה"
+          >
+            <Plus size={20} />
+          </button>
+          <button
+            onClick={removeUnit}
+            className="opacity-70 hover:opacity-100 flex-shrink-0 text-lg"
+            title="מחק יחידה"
+            aria-label="מחק יחידה"
+          >
+            <Trash2 size={20} />
+          </button>
           <button onClick={() => setShowStats(true)} className="opacity-70 hover:opacity-100 flex-shrink-0 text-lg">
             <BarChart3 size={20} />
           </button>
