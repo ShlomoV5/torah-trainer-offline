@@ -86,7 +86,8 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       return;
     }
     try {
-      const response = await fetch(`https://www.sefaria.org/api/texts/${u.book}_${u.chapter}?context=0`);
+      const encodedBook = encodeURIComponent(u.book);
+      const response = await fetch(`https://www.sefaria.org/api/texts/${encodedBook}_${u.chapter}?context=0`);
       if (!response.ok) throw new Error('שגיאה');
       const data = await response.json();
       if (requestId !== fetchRequestIdRef.current) return;
