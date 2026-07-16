@@ -9,6 +9,8 @@ describe('BOOK_OPTIONS', () => {
         expect.objectContaining({ value: 'Judges', label: 'שופטים' }),
         expect.objectContaining({ value: 'Isaiah', label: 'ישעיהו' }),
         expect.objectContaining({ value: 'Hosea', label: 'הושע' }),
+        expect.objectContaining({ value: 'I Samuel', label: 'שמואל א׳' }),
+        expect.objectContaining({ value: 'Nahum', label: 'נחום' }),
         expect.objectContaining({ value: 'Malachi', label: 'מלאכי' }),
       ])
     );
