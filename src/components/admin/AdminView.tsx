@@ -273,7 +273,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       streamRef.current = stream;
       
       const mimeType = getRecordingMimeType();
-      const recorderOptions = mimeType ? { mimeType, audioBitsPerSecond: 64000 } : { audioBitsPerSecond: 64000 };
+      const recorderOptions = { audioBitsPerSecond: 64000, ...(mimeType ? { mimeType } : {}) };
       const recorder = new MediaRecorder(stream, recorderOptions);
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
