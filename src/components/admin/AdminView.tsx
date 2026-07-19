@@ -278,13 +278,18 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       const recorder = mimeType
         ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_RECORDING_BITRATE })
         : new MediaRecorder(stream, { audioBitsPerSecond: AUDIO_RECORDING_BITRATE });
+      const resolvedMimeType = recorder.mimeType || mimeType || 'audio/mp4';
+      if (!mimeType && !recorder.mimeType) {
+        stream.getTracks().forEach(t => t.stop());
+        throw new Error('פורמט הקלטה לא נתמך במכשיר זה.');
+      }
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
       setRecordingTarget(target);
 
       recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
+        const blob = new Blob(audioChunksRef.current, { type: resolvedMimeType });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = () => {
