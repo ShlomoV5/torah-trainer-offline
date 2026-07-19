@@ -75,6 +75,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   // Use ref for editingVerseIdx to avoid stale closures in recording callbacks
   const editingVerseIdxRef = useRef(editingVerseIdx);
   editingVerseIdxRef.current = editingVerseIdx;
+  const recordingMimeTypeRef = useRef('audio/mp4;codecs=mp4a.40.2');
 
   const unit = state.units[state.activeAdminUnitIndex];
   const verse = unit?.verses?.[editingVerseIdx];
@@ -238,6 +239,21 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
     });
   };
 
+  const getRecordingMimeType = () => {
+    const preferredMimeTypes = [
+      'audio/mp4;codecs=mp4a.40.2',
+      'audio/mp4',
+      'audio/webm;codecs=opus',
+      'audio/webm',
+    ];
+
+    for (const type of preferredMimeTypes) {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+
+    return '';
+  };
+
   // CRITICAL: getUserMedia called directly in click handler
   const toggleRecording = async (target: number) => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -258,15 +274,17 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       });
       streamRef.current = stream;
       
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const mimeType = getRecordingMimeType();
+      recordingMimeTypeRef.current = mimeType || 'audio/mp4;codecs=mp4a.40.2';
+      const recorderOptions = mimeType ? { mimeType, audioBitsPerSecond: 64000 } : { audioBitsPerSecond: 64000 };
+      const recorder = new MediaRecorder(stream, recorderOptions);
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
       setRecordingTarget(target);
 
       recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || recordingMimeTypeRef.current });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = () => {
