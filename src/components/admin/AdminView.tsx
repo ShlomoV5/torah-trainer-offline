@@ -3,6 +3,14 @@ import { useApp } from '@/context/AppContext';
 import { toHebrewLetter, BOOK_OPTIONS } from '@/utils/hebrew';
 import { Plus, Trash2, FileDown, FileUp, Mic, Square, Upload, Play, Scissors } from 'lucide-react';
 
+const PREFERRED_RECORDING_MIME_TYPES = [
+  'audio/mp4;codecs=mp4a.40.2',
+  'audio/mp4',
+  'audio/webm;codecs=opus',
+  'audio/webm',
+];
+const AUDIO_RECORDING_BITRATE = 64000;
+
 // Audio block component - extracted outside to avoid remount issues
 function AudioBlock({ 
   target, 
@@ -238,6 +246,14 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
     });
   };
 
+  const getRecordingMimeType = () => {
+    for (const type of PREFERRED_RECORDING_MIME_TYPES) {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    }
+
+    return null;
+  };
+
   // CRITICAL: getUserMedia called directly in click handler
   const toggleRecording = async (target: number) => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -258,15 +274,22 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       });
       streamRef.current = stream;
       
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const mimeType = getRecordingMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_RECORDING_BITRATE })
+        : new MediaRecorder(stream, { audioBitsPerSecond: AUDIO_RECORDING_BITRATE });
+      const resolvedMimeType = recorder.mimeType || mimeType || 'audio/mp4';
+      if (!mimeType && !recorder.mimeType) {
+        stream.getTracks().forEach(t => t.stop());
+        throw new Error('פורמט הקלטה לא נתמך במכשיר זה.');
+      }
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
       setRecordingTarget(target);
 
       recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: mimeType });
+        const blob = new Blob(audioChunksRef.current, { type: resolvedMimeType });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = () => {
