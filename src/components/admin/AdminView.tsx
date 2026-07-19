@@ -250,7 +250,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       if (MediaRecorder.isTypeSupported(type)) return type;
     }
 
-    return '';
+    return null;
   };
 
   // CRITICAL: getUserMedia called directly in click handler
@@ -283,7 +283,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
 
       recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || mimeType });
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
         reader.onloadend = () => {
