@@ -9,6 +9,7 @@ const PREFERRED_RECORDING_MIME_TYPES = [
   'audio/webm;codecs=opus',
   'audio/webm',
 ];
+const AUDIO_RECORDING_BITRATE = 64000;
 
 // Audio block component - extracted outside to avoid remount issues
 function AudioBlock({ 
@@ -274,9 +275,9 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       streamRef.current = stream;
       
       const mimeType = getRecordingMimeType();
-      const recorderOptions: MediaRecorderOptions = { audioBitsPerSecond: 64000 };
-      if (mimeType) recorderOptions.mimeType = mimeType;
-      const recorder = new MediaRecorder(stream, recorderOptions);
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: AUDIO_RECORDING_BITRATE })
+        : new MediaRecorder(stream, { audioBitsPerSecond: AUDIO_RECORDING_BITRATE });
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
       setRecordingTarget(target);
