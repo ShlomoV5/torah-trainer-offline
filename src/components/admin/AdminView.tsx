@@ -3,6 +3,13 @@ import { useApp } from '@/context/AppContext';
 import { toHebrewLetter, BOOK_OPTIONS } from '@/utils/hebrew';
 import { Plus, Trash2, FileDown, FileUp, Mic, Square, Upload, Play, Scissors } from 'lucide-react';
 
+const PREFERRED_RECORDING_MIME_TYPES = [
+  'audio/mp4;codecs=mp4a.40.2',
+  'audio/mp4',
+  'audio/webm;codecs=opus',
+  'audio/webm',
+];
+
 // Audio block component - extracted outside to avoid remount issues
 function AudioBlock({ 
   target, 
@@ -75,12 +82,6 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   // Use ref for editingVerseIdx to avoid stale closures in recording callbacks
   const editingVerseIdxRef = useRef(editingVerseIdx);
   editingVerseIdxRef.current = editingVerseIdx;
-  const preferredRecordingMimeTypes = [
-    'audio/mp4;codecs=mp4a.40.2',
-    'audio/mp4',
-    'audio/webm;codecs=opus',
-    'audio/webm',
-  ];
 
   const unit = state.units[state.activeAdminUnitIndex];
   const verse = unit?.verses?.[editingVerseIdx];
@@ -245,7 +246,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   };
 
   const getRecordingMimeType = () => {
-    for (const type of preferredRecordingMimeTypes) {
+    for (const type of PREFERRED_RECORDING_MIME_TYPES) {
       if (MediaRecorder.isTypeSupported(type)) return type;
     }
 
@@ -273,7 +274,8 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       streamRef.current = stream;
       
       const mimeType = getRecordingMimeType();
-      const recorderOptions = { audioBitsPerSecond: 64000, ...(mimeType ? { mimeType } : {}) };
+      const recorderOptions: MediaRecorderOptions = { audioBitsPerSecond: 64000 };
+      if (mimeType) recorderOptions.mimeType = mimeType;
       const recorder = new MediaRecorder(stream, recorderOptions);
       audioChunksRef.current = [];
       mediaRecorderRef.current = recorder;
