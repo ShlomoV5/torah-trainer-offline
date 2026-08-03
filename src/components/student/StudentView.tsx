@@ -8,35 +8,40 @@ export default function StudentView() {
   const { state, setState, setFeedback, goToNextVerse, goToPrevVerse, stopAnyAudio, playAudioUrl } = useApp();
   const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  // playingVerseIdx: which verse's words are currently lit; playingWords: word indices within that verse
+  const [playingVerseIdx, setPlayingVerseIdx] = useState<number | null>(null);
   const [playingWords, setPlayingWords] = useState<Set<number>>(new Set());
   const playTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const unit = state.units[state.activeStudentUnitIndex];
   const verse = unit?.verses?.[state.currentVerseIndex];
-  const words = verse?.text?.split(' ') || [];
 
   const clearPlaying = useCallback(() => {
+    setPlayingVerseIdx(null);
     setPlayingWords(new Set());
     if (playTimeoutRef.current) clearTimeout(playTimeoutRef.current);
   }, []);
 
-  // Play full verse by concatenating section audio sequentially
-  const playCurrentVerse = useCallback(() => {
-    if (!verse) return;
-    clearPlaying();
-    const sections = verse.sections || [];
-    
-    if (sections.length === 0) return; // No sections, nothing to play
+  // Play sections of a single verse, calling onDone when finished
+  const playVerseByIndex = useCallback((verseIdx: number, onDone?: () => void) => {
+    if (!unit) return;
+    const v = unit.verses[verseIdx];
+    if (!v) { onDone?.(); return; }
+    const sections = v.sections || [];
+    setPlayingVerseIdx(verseIdx);
+
+    if (sections.length === 0) {
+      onDone?.();
+      return;
+    }
 
     let currentSectionIdx = 0;
-
     const playNextSection = () => {
       if (currentSectionIdx >= sections.length) {
-        clearPlaying();
+        onDone?.();
         return;
       }
       const sec = sections[currentSectionIdx];
-      // Mark entire section
       const wordIndices = new Set<number>();
       for (let i = sec.start; i <= sec.end; i++) wordIndices.add(i);
       setPlayingWords(wordIndices);
@@ -47,33 +52,52 @@ export default function StudentView() {
           playNextSection();
         });
       } else {
-        // No audio for this section - briefly highlight then move on
-        setTimeout(() => {
+        playTimeoutRef.current = setTimeout(() => {
           currentSectionIdx++;
           playNextSection();
         }, 1000);
       }
     };
-
     playNextSection();
-  }, [verse, playAudioUrl, clearPlaying]);
+  }, [unit, playAudioUrl]);
 
-  // Play a single section - mark ALL words in section
+  // Play current verse only
+  const playCurrentVerse = useCallback(() => {
+    if (!verse) return;
+    clearPlaying();
+    playVerseByIndex(state.currentVerseIndex, clearPlaying);
+  }, [verse, state.currentVerseIndex, playVerseByIndex, clearPlaying]);
+
+  // Play all verses sequentially
+  const playAllVerses = useCallback(() => {
+    if (!unit) return;
+    clearPlaying();
+    let idx = 0;
+    const playNext = () => {
+      if (idx >= unit.verses.length) { clearPlaying(); return; }
+      playVerseByIndex(idx, () => {
+        idx++;
+        playNext();
+      });
+    };
+    playNext();
+  }, [unit, playVerseByIndex, clearPlaying]);
+
+  // Play a single section of the current verse - mark ALL words in section
   const playSection = useCallback((sectionIndex: number) => {
     if (!verse) return;
     clearPlaying();
     const sec = verse.sections[sectionIndex];
     const wordIndices = new Set<number>();
     for (let i = sec.start; i <= sec.end; i++) wordIndices.add(i);
-    
+    setPlayingVerseIdx(state.currentVerseIndex);
     setPlayingWords(wordIndices);
     if (sec.audioUrl) {
       playAudioUrl(sec.audioUrl, clearPlaying);
     } else {
-      // No audio - just highlight briefly
-      setTimeout(clearPlaying, 1500);
+      playTimeoutRef.current = setTimeout(clearPlaying, 1500);
     }
-  }, [verse, playAudioUrl, clearPlaying]);
+  }, [verse, state.currentVerseIndex, playAudioUrl, clearPlaying]);
 
   const changeUnit = (idx: number) => {
     stopAnyAudio();
@@ -211,7 +235,7 @@ export default function StudentView() {
         </div>
       </header>
 
-      {/* Verse area */}
+      {/* Verses area - show all verses; current verse is highlighted, others are greyed */}
       <main className="flex-1 min-h-0 relative w-full flex items-center justify-center py-2">
         <button
           onClick={goToPrevVerse}
@@ -222,22 +246,50 @@ export default function StudentView() {
         </button>
 
         <div className="pasuk-font text-center px-12 py-4 w-full h-full overflow-y-auto select-none verse-scroll" dir="rtl">
-          {words.map((word, index) => {
-            const sectionIndex = (verse?.sections || []).findIndex(s => index >= s.start && index <= s.end);
-            let colorClass = 'section-unassigned';
-            if (sectionIndex !== -1) colorClass = sectionIndex % 2 === 0 ? 'section-odd' : 'section-even';
-            const isPlaying = playingWords.has(index);
-
+          {unit.verses.map((v, vIdx) => {
+            const isCurrentVerse = vIdx === state.currentVerseIndex;
+            const verseWords = v.text?.split(' ') || [];
             return (
-              <span
-                key={index}
-                className={`word ${colorClass} ${isPlaying ? 'playing' : ''}`}
+              <div
+                key={vIdx}
+                className={`mb-4 pb-2 ${isCurrentVerse ? '' : 'verse-other'} ${vIdx < unit.verses.length - 1 ? 'border-b border-border/40' : ''}`}
                 onClick={() => {
-                  if (sectionIndex !== -1) playSection(sectionIndex);
+                  if (!isCurrentVerse) {
+                    stopAnyAudio();
+                    clearPlaying();
+                    setState(prev => ({ ...prev, currentVerseIndex: vIdx }));
+                  }
                 }}
               >
-                {word}
-              </span>
+                {verseWords.map((word, index) => {
+                  const sectionIndex = (v.sections || []).findIndex(s => index >= s.start && index <= s.end);
+                  const isPlaying = isCurrentVerse && playingVerseIdx === vIdx && playingWords.has(index);
+
+                  if (!isCurrentVerse) {
+                    return (
+                      <span key={index} className="word" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                        {word}
+                      </span>
+                    );
+                  }
+
+                  let colorClass = 'section-unassigned';
+                  if (sectionIndex !== -1) colorClass = sectionIndex % 2 === 0 ? 'section-odd' : 'section-even';
+
+                  return (
+                    <span
+                      key={index}
+                      className={`word ${colorClass} ${isPlaying ? 'playing' : ''}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        if (sectionIndex !== -1) playSection(sectionIndex);
+                      }}
+                    >
+                      {word}
+                    </span>
+                  );
+                })}
+              </div>
             );
           })}
         </div>
@@ -254,15 +306,24 @@ export default function StudentView() {
       {/* Bottom panel */}
       <div className="bg-card p-6 rounded-t-3xl shadow-[0_-4px_6px_-1px_hsl(var(--foreground)/0.1)] flex-shrink-0 z-10 relative">
         <div className="mb-4">
-          <button
-            onClick={playCurrentVerse}
-            className="w-full flex items-center justify-center bg-secondary text-secondary-foreground p-3 rounded-2xl active:bg-secondary/80 transition gap-2"
-          >
-            <Play size={20} />
-            <span className="text-sm font-bold">השמע קריאת פסוק מלא</span>
-          </button>
-          <div className="text-center text-xs text-muted-foreground mt-2 mb-4 font-medium">
-            או לחץ על מילה כדי לשמוע את הקטע שלה
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={playAllVerses}
+              className="flex-1 flex items-center justify-center bg-secondary text-secondary-foreground p-3 rounded-2xl active:bg-secondary/80 transition gap-2"
+            >
+              <Play size={18} />
+              <span className="text-sm font-bold">קרא ברצף</span>
+            </button>
+            <button
+              onClick={playCurrentVerse}
+              className="flex-1 flex items-center justify-center bg-primary/10 text-primary p-3 rounded-2xl active:bg-primary/20 transition gap-2"
+            >
+              <Play size={18} />
+              <span className="text-sm font-bold">קרא פסוק נוכחי</span>
+            </button>
+          </div>
+          <div className="text-center text-xs text-muted-foreground mb-4 font-medium">
+            לחץ על מילה בפסוק הנוכחי כדי לשמוע את הקטע שלה
           </div>
 
           <div className="bg-muted p-3 rounded-2xl border border-border">

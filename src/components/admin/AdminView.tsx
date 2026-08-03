@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
-import { toHebrewLetter, BOOK_OPTIONS } from '@/utils/hebrew';
+import { toHebrewLetter, BOOK_OPTIONS, PARSHA_LIST, NUSACH_OPTIONS } from '@/utils/hebrew';
 import { Plus, Trash2, FileDown, FileUp, Mic, Square, Upload, Play, Scissors } from 'lucide-react';
 
 const PREFERRED_RECORDING_MIME_TYPES = [
@@ -84,6 +84,14 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   const editingVerseIdxRef = useRef(editingVerseIdx);
   editingVerseIdxRef.current = editingVerseIdx;
 
+  // Parsha picker state
+  const [parshaSlug, setParshaSlug] = useState(PARSHA_LIST[0].slug);
+  const [parshaAliyot, setParshaAliyot] = useState<{ name: string; ref: string }[]>([]);
+  const [selectedAliyah, setSelectedAliyah] = useState('');
+  const [nusach, setNusach] = useState(NUSACH_OPTIONS[0].value);
+  const [parshaFetchStatus, setParshaFetchStatus] = useState('');
+  const parshaFetchRequestIdRef = useRef(0);
+
   const unit = state.units[state.activeAdminUnitIndex];
   const verse = unit?.verses?.[editingVerseIdx];
 
@@ -120,6 +128,126 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       setFetchStatus('✓ הושלם');
     } catch {
       setFetchStatus('שגיאה');
+    }
+  };
+
+  // --- Parsha / aliyah fetch helpers ---
+
+  /** Load aliyot list from the next-read endpoint for the chosen parsha */
+  const loadParshaAliyot = async (slug: string) => {
+    setParshaAliyot([]);
+    setSelectedAliyah('');
+    setParshaFetchStatus('טוען...');
+    try {
+      const res = await fetch(`https://www.sefaria.org/api/calendars/next-read/${encodeURIComponent(slug)}`);
+      if (!res.ok) throw new Error('שגיאה');
+      const data = await res.json();
+      const aliyot: { name: string; ref: string }[] = [];
+      const extras = data?.extraDetails?.aliyot;
+      if (extras && typeof extras === 'object') {
+        for (const [name, ref] of Object.entries(extras)) {
+          aliyot.push({ name, ref: ref as string });
+        }
+      }
+      // Also include הפטרה option (fetched separately via calendars API)
+      aliyot.push({ name: 'הפטרה', ref: '__haftara__' });
+      setParshaAliyot(aliyot);
+      setSelectedAliyah(aliyot[0]?.name ?? '');
+      setParshaFetchStatus('');
+      // Store date for haftara use
+      return { date: data?.date as string | undefined };
+    } catch {
+      setParshaFetchStatus('שגיאה בטעינת הפרשה');
+      return { date: undefined };
+    }
+  };
+
+  /** Fetch verses from a Sefaria reference string and apply them to the current unit */
+  const fetchAndApplyRef = async (ref: string, unitName: string) => {
+    setParshaFetchStatus('שואב פסוקים...');
+    try {
+      const encoded = encodeURIComponent(ref);
+      const res = await fetch(`https://www.sefaria.org/api/texts/${encoded}?context=0`);
+      if (!res.ok) throw new Error('שגיאה');
+      const data = await res.json();
+      const heTexts: string[] = [];
+      const flatten = (val: unknown) => {
+        if (Array.isArray(val)) val.forEach(flatten);
+        else if (typeof val === 'string' && val.trim()) {
+          heTexts.push(val.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim());
+        }
+      };
+      flatten(data.he);
+      if (heTexts.length === 0) throw new Error('לא נמצא טקסט');
+      const newVerses = heTexts.map(t => ({ text: t, sections: [], audioUrl: null }));
+      const unitIdx = state.activeAdminUnitIndex;
+      setState(prev => {
+        const units = [...prev.units];
+        if (!units[unitIdx]) return prev;
+        units[unitIdx] = { ...units[unitIdx], name: unitName, verses: newVerses };
+        return { ...prev, units };
+      });
+      setEditingVerseIdx(0);
+      setParshaFetchStatus('✓ הושלם');
+    } catch (err: any) {
+      setParshaFetchStatus('שגיאה: ' + err.message);
+    }
+  };
+
+  /** Fetch haftara reference using the calendars API and then load its text */
+  const fetchHaftaraAndApply = async (date: string | undefined, parshaLabel: string) => {
+    if (!date) {
+      setParshaFetchStatus('תאריך לא זמין לשאיבת הפטרה');
+      return;
+    }
+    setParshaFetchStatus('שואב הפטרה...');
+    try {
+      const [year, month, day] = date.split('-');
+      const calUrl = `https://www.sefaria.org/api/calendars?year=${year}&month=${month}&day=${day}&custom=${nusach}`;
+      const res = await fetch(calUrl);
+      if (!res.ok) throw new Error('שגיאה');
+      const data = await res.json();
+      let haftaraRef: string | null = null;
+      const items: any[] = data?.calendar_items ?? [];
+      for (const item of items) {
+        if (
+          item?.category === 'Haftarah' ||
+          (typeof item?.title?.he === 'string' && item.title.he.includes('הפטר'))
+        ) {
+          haftaraRef = item?.ref ?? null;
+          break;
+        }
+      }
+      if (!haftaraRef) throw new Error('לא נמצאה הפטרה בלוח שנה');
+      await fetchAndApplyRef(haftaraRef, `הפטרת ${parshaLabel}`);
+    } catch (err: any) {
+      setParshaFetchStatus('שגיאה: ' + err.message);
+    }
+  };
+
+  // Keep date from last next-read call for haftara use
+  const parshaNextReadDateRef = useRef<string | undefined>(undefined);
+
+  const handleParshaSlugChange = async (slug: string) => {
+    setParshaSlug(slug);
+    const result = await loadParshaAliyot(slug);
+    parshaNextReadDateRef.current = result.date;
+  };
+
+  const handleFetchParshaUnit = async () => {
+    if (!parshaAliyot.length) {
+      // Need to load aliyot first
+      const result = await loadParshaAliyot(parshaSlug);
+      parshaNextReadDateRef.current = result.date;
+      return;
+    }
+    const aliyah = parshaAliyot.find(a => a.name === selectedAliyah);
+    if (!aliyah) return;
+    const parshaLabel = PARSHA_LIST.find(p => p.slug === parshaSlug)?.label ?? parshaSlug;
+    if (aliyah.ref === '__haftara__') {
+      await fetchHaftaraAndApply(parshaNextReadDateRef.current, parshaLabel);
+    } else {
+      await fetchAndApplyRef(aliyah.ref, `${parshaLabel} - ${aliyah.name}`);
     }
   };
 
@@ -399,6 +527,56 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
             </div>
           </div>
         </div>
+
+        {/* Parsha picker */}
+        {unit && (
+          <div className="bg-card border border-border rounded-xl p-4 shadow-sm border-t-4 border-t-secondary-foreground">
+            <h3 className="font-bold text-lg mb-1 border-b border-border pb-2">שאיבה לפי פרשה / עלייה</h3>
+            <div className="space-y-3 mt-3">
+              <div>
+                <label className="text-xs font-bold text-muted-foreground">פרשה:</label>
+                <select
+                  value={parshaSlug}
+                  onChange={e => handleParshaSlugChange(e.target.value)}
+                  className="w-full border border-border rounded p-2 text-sm bg-muted"
+                >
+                  {PARSHA_LIST.map(p => <option key={p.slug} value={p.slug}>{p.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-muted-foreground">נוסח (לצורך הפטרה):</label>
+                <select
+                  value={nusach}
+                  onChange={e => setNusach(e.target.value)}
+                  className="w-full border border-border rounded p-2 text-sm bg-muted"
+                >
+                  {NUSACH_OPTIONS.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
+                </select>
+              </div>
+              {parshaAliyot.length > 0 && (
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground">עלייה / הפטרה:</label>
+                  <select
+                    value={selectedAliyah}
+                    onChange={e => setSelectedAliyah(e.target.value)}
+                    className="w-full border border-border rounded p-2 text-sm bg-muted"
+                  >
+                    {parshaAliyot.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                  </select>
+                </div>
+              )}
+              <button
+                onClick={handleFetchParshaUnit}
+                className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-bold hover:bg-primary/90 transition"
+              >
+                {parshaAliyot.length === 0 ? 'טען רשימת עליות' : 'שאב פסוקים לפרשה'}
+              </button>
+              {parshaFetchStatus && (
+                <div className="text-xs text-center font-bold text-muted-foreground">{parshaFetchStatus}</div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Source & fetch */}
         {unit && (
