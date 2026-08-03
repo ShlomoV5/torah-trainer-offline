@@ -174,7 +174,9 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       const flatten = (val: unknown) => {
         if (Array.isArray(val)) val.forEach(flatten);
         else if (typeof val === 'string' && val.trim()) {
-          heTexts.push(val.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim());
+          // Strip HTML tags completely: first replace closing >, then strip remaining opening <tag
+          const stripped = val.replace(/<[^>]+>/gm, '').replace(/<[^>]*/gm, '').replace(/\s+/g, ' ').trim();
+          heTexts.push(stripped);
         }
       };
       flatten(data.he);
