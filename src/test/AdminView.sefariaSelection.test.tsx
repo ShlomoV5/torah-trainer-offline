@@ -48,8 +48,8 @@ describe('AdminView Sefaria selection syncing', () => {
     );
 
     const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
-    const fromSelect = selects[3];
-    const toSelect = selects[4];
+    const fromSelect = selects[5];
+    const toSelect = selects[6];
 
     fireEvent.change(fromSelect, { target: { value: '2' } });
     fireEvent.change(toSelect, { target: { value: '4' } });
