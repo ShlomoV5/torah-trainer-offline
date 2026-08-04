@@ -85,12 +85,19 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   editingVerseIdxRef.current = editingVerseIdx;
 
   // Parsha picker state
+  const [useParshaPicker, setUseParshaPicker] = useState(false);
   const [parshaSlug, setParshaSlug] = useState(PARSHA_LIST[0].slug);
   const [parshaAliyot, setParshaAliyot] = useState<{ name: string; ref: string }[]>([]);
   const [selectedAliyah, setSelectedAliyah] = useState('');
   const [nusach, setNusach] = useState(NUSACH_OPTIONS[0].value);
   const [parshaFetchStatus, setParshaFetchStatus] = useState('');
   const parshaFetchRequestIdRef = useRef(0);
+
+  // Map Sefaria API aliyah keys to Hebrew display names
+  const ALIYAH_DISPLAY_NAMES: Record<string, string> = {
+    '1': 'ראשון', '2': 'שני', '3': 'שלישי', '4': 'רביעי',
+    '5': 'חמישי', '6': 'שישי', '7': 'שביעי', 'maftir': 'מפטיר',
+  };
 
   const unit = state.units[state.activeAdminUnitIndex];
   const verse = unit?.verses?.[editingVerseIdx];
@@ -143,9 +150,11 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       if (!res.ok) throw new Error('שגיאה');
       const data = await res.json();
       const aliyot: { name: string; ref: string }[] = [];
-      const extras = data?.extraDetails?.aliyot;
+      // Try both known paths for aliyot in the Sefaria next-read API response
+      const extras = data?.extraDetails?.aliyot ?? data?.aliyot;
       if (extras && typeof extras === 'object') {
-        for (const [name, ref] of Object.entries(extras)) {
+        for (const [key, ref] of Object.entries(extras)) {
+          const name = ALIYAH_DISPLAY_NAMES[key] ?? key;
           aliyot.push({ name, ref: ref as string });
         }
       }
@@ -533,55 +542,70 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
         {/* Parsha picker */}
         {unit && (
           <div className="bg-card border border-border rounded-xl p-4 shadow-sm border-t-4 border-t-secondary-foreground">
-            <h3 className="font-bold text-lg mb-1 border-b border-border pb-2">שאיבה לפי פרשה / עלייה</h3>
-            <div className="space-y-3 mt-3">
-              <div>
-                <label className="text-xs font-bold text-muted-foreground">פרשה:</label>
-                <select
-                  value={parshaSlug}
-                  onChange={e => handleParshaSlugChange(e.target.value)}
-                  className="w-full border border-border rounded p-2 text-sm bg-muted"
+            <div className="flex justify-between items-center mb-1 border-b border-border pb-2">
+              <h3 className="font-bold text-lg">שאיבה לפי פרשה / עלייה</h3>
+              <label className="flex items-center gap-2 cursor-pointer text-sm font-bold select-none">
+                <span className="text-muted-foreground text-xs">{useParshaPicker ? 'פעיל' : 'כבוי'}</span>
+                <div
+                  onClick={() => { setUseParshaPicker(v => !v); setParshaAliyot([]); setSelectedAliyah(''); setParshaFetchStatus(''); }}
+                  className={`relative inline-block w-10 h-5 rounded-full transition-colors cursor-pointer ${useParshaPicker ? 'bg-primary' : 'bg-muted-foreground/30'}`}
                 >
-                  {PARSHA_LIST.map(p => <option key={p.slug} value={p.slug}>{p.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-bold text-muted-foreground">נוסח (לצורך הפטרה):</label>
-                <select
-                  value={nusach}
-                  onChange={e => setNusach(e.target.value)}
-                  className="w-full border border-border rounded p-2 text-sm bg-muted"
-                >
-                  {NUSACH_OPTIONS.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
-                </select>
-              </div>
-              {parshaAliyot.length > 0 && (
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useParshaPicker ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </div>
+              </label>
+            </div>
+            {useParshaPicker && (
+              <div className="space-y-3 mt-3">
                 <div>
-                  <label className="text-xs font-bold text-muted-foreground">עלייה / הפטרה:</label>
+                  <label className="text-xs font-bold text-muted-foreground">פרשה:</label>
                   <select
-                    value={selectedAliyah}
-                    onChange={e => setSelectedAliyah(e.target.value)}
+                    value={parshaSlug}
+                    onChange={e => handleParshaSlugChange(e.target.value)}
                     className="w-full border border-border rounded p-2 text-sm bg-muted"
                   >
-                    {parshaAliyot.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                    {PARSHA_LIST.map(p => <option key={p.slug} value={p.slug}>{p.label}</option>)}
                   </select>
                 </div>
-              )}
-              <button
-                onClick={handleFetchParshaUnit}
-                className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-bold hover:bg-primary/90 transition"
-              >
-                {parshaAliyot.length === 0 ? 'טען רשימת עליות' : 'שאב פסוקים לפרשה'}
-              </button>
-              {parshaFetchStatus && (
-                <div className="text-xs text-center font-bold text-muted-foreground">{parshaFetchStatus}</div>
-              )}
-            </div>
+                {parshaAliyot.length > 0 && (
+                  <div>
+                    <label className="text-xs font-bold text-muted-foreground">עלייה / הפטרה:</label>
+                    <select
+                      value={selectedAliyah}
+                      onChange={e => setSelectedAliyah(e.target.value)}
+                      className="w-full border border-border rounded p-2 text-sm bg-muted"
+                    >
+                      {parshaAliyot.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
+                    </select>
+                  </div>
+                )}
+                {selectedAliyah === 'הפטרה' && (
+                  <div>
+                    <label className="text-xs font-bold text-muted-foreground">נוסח:</label>
+                    <select
+                      value={nusach}
+                      onChange={e => setNusach(e.target.value)}
+                      className="w-full border border-border rounded p-2 text-sm bg-muted"
+                    >
+                      {NUSACH_OPTIONS.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
+                    </select>
+                  </div>
+                )}
+                <button
+                  onClick={handleFetchParshaUnit}
+                  className="w-full bg-primary text-primary-foreground py-2 rounded-lg text-sm font-bold hover:bg-primary/90 transition"
+                >
+                  {parshaAliyot.length === 0 ? 'טען רשימת עליות' : 'שאב פסוקים לפרשה'}
+                </button>
+                {parshaFetchStatus && (
+                  <div className="text-xs text-center font-bold text-muted-foreground">{parshaFetchStatus}</div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* Source & fetch */}
-        {unit && (
+        {unit && !useParshaPicker && (
           <div className="bg-card border border-border rounded-xl p-4 shadow-sm border-t-4 border-t-primary">
             <h3 className="font-bold text-lg mb-1 border-b border-border pb-2">מקור ושאיבת פסוקים</h3>
             <div className="space-y-3 mt-3">
@@ -609,13 +633,13 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
                 </div>
                 <div>
                   <label className="text-xs font-bold text-muted-foreground">מפסוק:</label>
-                  <select value={unit.startVerse} onChange={e => updateUnit('startVerse', e.target.value)} className="w-full border border-border rounded p-2 text-sm bg-muted">
+                  <select aria-label="מפסוק" value={unit.startVerse} onChange={e => updateUnit('startVerse', e.target.value)} className="w-full border border-border rounded p-2 text-sm bg-muted">
                     {chapterOptions.map(n => <option key={n} value={n}>{toHebrewLetter(n)}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="text-xs font-bold text-muted-foreground">עד פסוק:</label>
-                  <select value={unit.endVerse} onChange={e => updateUnit('endVerse', e.target.value)} className="w-full border border-border rounded p-2 text-sm bg-muted">
+                  <select aria-label="עד פסוק" value={unit.endVerse} onChange={e => updateUnit('endVerse', e.target.value)} className="w-full border border-border rounded p-2 text-sm bg-muted">
                     {chapterOptions.map(n => <option key={n} value={n}>{toHebrewLetter(n)}</option>)}
                   </select>
                 </div>
