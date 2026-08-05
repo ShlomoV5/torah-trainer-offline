@@ -41,7 +41,7 @@ describe('AdminView Sefaria selection syncing', () => {
       }),
     } as Response);
 
-    const { getByText } = render(
+    render(
       <AppProvider>
         <AdminView onExit={() => {}} />
       </AppProvider>

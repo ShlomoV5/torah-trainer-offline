@@ -2,7 +2,7 @@ import { Break } from '@/types/app';
 
 export function processVerseText(raw: string): { text: string; breaks: Break[] } {
   // 1. Strip HTML tags
-  let text = raw.replace(/<[^>]*>?/gm, '');
+  let text = raw.replace(/(<([^>]+)>)/gi, '');
   // 2. Remove thin space (U+2009) or other special spaces
   text = text.replace(/\u2009/g, '');
   

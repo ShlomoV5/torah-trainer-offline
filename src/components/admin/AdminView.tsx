@@ -153,7 +153,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       if (!date) throw new Error('תאריך לא נמצא');
       
       const [year, month, day] = date.split('-');
-      const calUrl = `https://www.sefaria.org/api/calendars?year=${year}&month=${month}&day=${day}&custom=${currentNusach}`;
+      const calUrl = `https://www.sefaria.org/api/calendars?year=${year}&month=${month}&day=${day}&custom=${encodeURIComponent(currentNusach)}`;
       const calRes = await fetch(calUrl);
       if (!calRes.ok) throw new Error('שגיאה');
       const calData = await calRes.json();
@@ -181,6 +181,8 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       setSelectedAliyah(prev => aliyot.find(a => a.name === prev) ? prev : (aliyot[0]?.name ?? ''));
       setParshaFetchStatus('');
     } catch {
+      setParshaAliyot([]);
+      setSelectedAliyah('');
       setParshaFetchStatus('שגיאה בטעינת הפרשה');
     }
   };
