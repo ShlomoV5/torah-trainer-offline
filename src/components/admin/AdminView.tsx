@@ -1,5 +1,6 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
+import { processVerseText } from '@/utils/text';
 import { toHebrewLetter, BOOK_OPTIONS, PARSHA_LIST, NUSACH_OPTIONS } from '@/utils/hebrew';
 import { Plus, Trash2, FileDown, FileUp, Mic, Square, Upload, Play, Scissors } from 'lucide-react';
 
@@ -85,7 +86,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
   editingVerseIdxRef.current = editingVerseIdx;
 
   // Parsha picker state
-  const [useParshaPicker, setUseParshaPicker] = useState(false);
+  const [useCustomImport, setUseCustomImport] = useState(false);
   const [parshaSlug, setParshaSlug] = useState(PARSHA_LIST[0].slug);
   const [parshaAliyot, setParshaAliyot] = useState<{ name: string; ref: string }[]>([]);
   const [selectedAliyah, setSelectedAliyah] = useState('');
@@ -119,10 +120,10 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       for (let i = u.startVerse; i <= u.endVerse; i++) {
         const apiIndex = i - 1;
         if (apiIndex < data.he.length && data.he[apiIndex]) {
-          const cleanText = data.he[apiIndex].replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim();
-          newVerses.push({ text: cleanText, sections: [], audioUrl: null });
+          const { text, breaks } = processVerseText(data.he[apiIndex]);
+          newVerses.push({ text, sections: [], audioUrl: null, breaks });
         } else {
-          newVerses.push({ text: `(פסוק ${toHebrewLetter(i)} חסר)`, sections: [], audioUrl: null });
+          newVerses.push({ text: `(פסוק ${toHebrewLetter(i)} חסר)`, sections: [], audioUrl: null, breaks: [] });
         }
       }
       setState(prev => {
@@ -140,34 +141,47 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
 
   // --- Parsha / aliyah fetch helpers ---
 
-  /** Load aliyot list from the next-read endpoint for the chosen parsha */
-  const loadParshaAliyot = async (slug: string) => {
-    setParshaAliyot([]);
-    setSelectedAliyah('');
+  /** Load aliyot list from the next-read endpoint and calendars endpoint for the chosen parsha */
+  const loadParshaAliyot = async (slug: string, currentNusach: string) => {
     setParshaFetchStatus('טוען...');
     try {
       const res = await fetch(`https://www.sefaria.org/api/calendars/next-read/${encodeURIComponent(slug)}`);
       if (!res.ok) throw new Error('שגיאה');
       const data = await res.json();
+      
+      const date = data?.date;
+      if (!date) throw new Error('תאריך לא נמצא');
+      
+      const [year, month, day] = date.split('-');
+      const calUrl = `https://www.sefaria.org/api/calendars?year=${year}&month=${month}&day=${day}&custom=${currentNusach}`;
+      const calRes = await fetch(calUrl);
+      if (!calRes.ok) throw new Error('שגיאה');
+      const calData = await calRes.json();
+      
       const aliyot: { name: string; ref: string }[] = [];
-      // Try both known paths for aliyot in the Sefaria next-read API response
-      const extras = data?.extraDetails?.aliyot ?? data?.aliyot;
+      const items: any[] = calData?.calendar_items ?? [];
+      
+      let parshaItem = items.find(i => i.category === 'Parashat Hashavua' || (typeof i.title?.he === 'string' && i.title.he.includes('פרשת')));
+      if (!parshaItem) parshaItem = items.find(i => i.extraDetails?.aliyot); // fallback
+      
+      const extras = parshaItem?.extraDetails?.aliyot;
       if (extras && typeof extras === 'object') {
         for (const [key, ref] of Object.entries(extras)) {
           const name = ALIYAH_DISPLAY_NAMES[key] ?? key;
           aliyot.push({ name, ref: ref as string });
         }
       }
-      // Also include הפטרה option (fetched separately via calendars API)
-      aliyot.push({ name: 'הפטרה', ref: '__haftara__' });
+      
+      const haftaraItem = items.find(i => i.category === 'Haftarah' || (typeof i.title?.he === 'string' && i.title.he.includes('הפטר')));
+      if (haftaraItem?.ref) {
+        aliyot.push({ name: 'הפטרה', ref: haftaraItem.ref });
+      }
+      
       setParshaAliyot(aliyot);
-      setSelectedAliyah(aliyot[0]?.name ?? '');
+      setSelectedAliyah(prev => aliyot.find(a => a.name === prev) ? prev : (aliyot[0]?.name ?? ''));
       setParshaFetchStatus('');
-      // Store date for haftara use
-      return { date: data?.date as string | undefined };
     } catch {
       setParshaFetchStatus('שגיאה בטעינת הפרשה');
-      return { date: undefined };
     }
   };
 
@@ -183,14 +197,16 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
       const flatten = (val: unknown) => {
         if (Array.isArray(val)) val.forEach(flatten);
         else if (typeof val === 'string' && val.trim()) {
-          // Remove all angle-bracket delimited markup then normalise whitespace
-          const stripped = val.split('<').map(chunk => chunk.replace(/^[^>]*>/, '')).join('').replace(/\s+/g, ' ').trim();
-          heTexts.push(stripped);
+          heTexts.push(val);
         }
       };
       flatten(data.he);
       if (heTexts.length === 0) throw new Error('לא נמצא טקסט');
-      const newVerses = heTexts.map(t => ({ text: t, sections: [], audioUrl: null }));
+      
+      const newVerses = heTexts.map(t => {
+        const { text, breaks } = processVerseText(t);
+        return { text, sections: [], audioUrl: null, breaks };
+      });
       const unitIdx = state.activeAdminUnitIndex;
       setState(prev => {
         const units = [...prev.units];
@@ -205,61 +221,28 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
     }
   };
 
-  /** Fetch haftara reference using the calendars API and then load its text */
-  const fetchHaftaraAndApply = async (date: string | undefined, parshaLabel: string) => {
-    if (!date) {
-      setParshaFetchStatus('תאריך לא זמין לשאיבת הפטרה');
-      return;
-    }
-    setParshaFetchStatus('שואב הפטרה...');
-    try {
-      const [year, month, day] = date.split('-');
-      const calUrl = `https://www.sefaria.org/api/calendars?year=${year}&month=${month}&day=${day}&custom=${nusach}`;
-      const res = await fetch(calUrl);
-      if (!res.ok) throw new Error('שגיאה');
-      const data = await res.json();
-      let haftaraRef: string | null = null;
-      const items: any[] = data?.calendar_items ?? [];
-      for (const item of items) {
-        if (
-          item?.category === 'Haftarah' ||
-          (typeof item?.title?.he === 'string' && item.title.he.includes('הפטר'))
-        ) {
-          haftaraRef = item?.ref ?? null;
-          break;
-        }
-      }
-      if (!haftaraRef) throw new Error('לא נמצאה הפטרה בלוח שנה');
-      await fetchAndApplyRef(haftaraRef, `הפטרת ${parshaLabel}`);
-    } catch (err: any) {
-      setParshaFetchStatus('שגיאה: ' + err.message);
-    }
-  };
-
-  // Keep date from last next-read call for haftara use
-  const parshaNextReadDateRef = useRef<string | undefined>(undefined);
-
   const handleParshaSlugChange = async (slug: string) => {
     setParshaSlug(slug);
-    const result = await loadParshaAliyot(slug);
-    parshaNextReadDateRef.current = result.date;
+    await loadParshaAliyot(slug, nusach);
+  };
+
+  const handleNusachChange = async (newNusach: string) => {
+    setNusach(newNusach);
+    if (parshaSlug) {
+      await loadParshaAliyot(parshaSlug, newNusach);
+    }
   };
 
   const handleFetchParshaUnit = async () => {
     if (!parshaAliyot.length) {
       // Need to load aliyot first
-      const result = await loadParshaAliyot(parshaSlug);
-      parshaNextReadDateRef.current = result.date;
+      await loadParshaAliyot(parshaSlug, nusach);
       return;
     }
     const aliyah = parshaAliyot.find(a => a.name === selectedAliyah);
     if (!aliyah) return;
     const parshaLabel = PARSHA_LIST.find(p => p.slug === parshaSlug)?.label ?? parshaSlug;
-    if (aliyah.ref === '__haftara__') {
-      await fetchHaftaraAndApply(parshaNextReadDateRef.current, parshaLabel);
-    } else {
-      await fetchAndApplyRef(aliyah.ref, `${parshaLabel} - ${aliyah.name}`);
-    }
+    await fetchAndApplyRef(aliyah.ref, `${parshaLabel} - ${aliyah.name}`);
   };
 
   const updateUnit = (key: string, value: any) => {
@@ -540,23 +523,13 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
         </div>
 
         {/* Parsha picker */}
-        {unit && (
+        {unit && !useCustomImport && (
           <div className="bg-card border border-border rounded-xl p-4 shadow-sm border-t-4 border-t-secondary-foreground">
             <div className="flex justify-between items-center mb-1 border-b border-border pb-2">
               <h3 className="font-bold text-lg">שאיבה לפי פרשה / עלייה</h3>
-              <label className="flex items-center gap-2 cursor-pointer text-sm font-bold select-none">
-                <span className="text-muted-foreground text-xs">{useParshaPicker ? 'פעיל' : 'כבוי'}</span>
-                <div
-                  onClick={() => { setUseParshaPicker(v => !v); setParshaAliyot([]); setSelectedAliyah(''); setParshaFetchStatus(''); }}
-                  className={`relative inline-block w-10 h-5 rounded-full transition-colors cursor-pointer ${useParshaPicker ? 'bg-primary' : 'bg-muted-foreground/30'}`}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useParshaPicker ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                </div>
-              </label>
             </div>
-            {useParshaPicker && (
-              <div className="space-y-3 mt-3">
-                <div>
+            <div className="space-y-3 mt-3">
+              <div>
                   <label className="text-xs font-bold text-muted-foreground">פרשה:</label>
                   <select
                     value={parshaSlug}
@@ -583,7 +556,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
                     <label className="text-xs font-bold text-muted-foreground">נוסח:</label>
                     <select
                       value={nusach}
-                      onChange={e => setNusach(e.target.value)}
+                      onChange={e => handleNusachChange(e.target.value)}
                       className="w-full border border-border rounded p-2 text-sm bg-muted"
                     >
                       {NUSACH_OPTIONS.map(n => <option key={n.value} value={n.value}>{n.label}</option>)}
@@ -600,17 +573,27 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
                   <div className="text-xs text-center font-bold text-muted-foreground">{parshaFetchStatus}</div>
                 )}
               </div>
-            )}
           </div>
         )}
 
         {/* Source & fetch */}
-        {unit && !useParshaPicker && (
+        {unit && (
           <div className="bg-card border border-border rounded-xl p-4 shadow-sm border-t-4 border-t-primary">
-            <h3 className="font-bold text-lg mb-1 border-b border-border pb-2">מקור ושאיבת פסוקים</h3>
-            <div className="space-y-3 mt-3">
-              <div>
-                <label className="text-xs font-bold text-muted-foreground">שם היחידה:</label>
+            <div className="flex justify-between items-center mb-1 border-b border-border pb-2">
+              <h3 className="font-bold text-lg">ייבוא אישי</h3>
+              <label className="flex items-center gap-2 cursor-pointer text-sm font-bold select-none" onClick={() => setUseCustomImport(v => !v)}>
+                <span className="text-muted-foreground text-xs">{useCustomImport ? 'פעיל' : 'כבוי'}</span>
+                <div
+                  className={`relative inline-block w-10 h-5 rounded-full transition-colors cursor-pointer ${useCustomImport ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useCustomImport ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </div>
+              </label>
+            </div>
+            {useCustomImport && (
+              <div className="space-y-3 mt-3">
+                <div>
+                  <label className="text-xs font-bold text-muted-foreground">שם היחידה:</label>
                 <input
                   type="text"
                   value={unit.name}
@@ -645,6 +628,7 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
                 </div>
               </div>
             </div>
+            )}
           </div>
         )}
 
@@ -671,22 +655,31 @@ export default function AdminView({ onExit }: { onExit: () => void }) {
             </div>
 
             <div className="border border-border p-4 rounded-lg bg-muted mb-4 text-center leading-normal" dir="rtl" style={{ fontFamily: "'Taamey David', 'Heebo', serif", fontSize: '2rem', fontWeight: 700 }}>
+              {(verse.breaks || []).filter(b => b.wordIndex === -1).map((b, bi) => (
+                b.type === 'petucha' ? <br key={`br-pre-${bi}`} /> : <span key={`sp-pre-${bi}`} style={{ display: 'inline-block', width: '3em' }} />
+              ))}
               {words.map((word, i) => {
                 const secIdx = (verse.sections || []).findIndex(s => i >= s.start && i <= s.end);
                 let extraClass = '';
                 if (i === editorSel.start) extraClass = 'start-word';
                 else if (i === editorSel.end) extraClass = 'end-word';
                 else if (editorSel.end !== -1 && i >= editorSel.start && i <= editorSel.end) extraClass = 'selected-range';
+                
+                const breaksAfter = (verse.breaks || []).filter(b => b.wordIndex === i);
 
                 return (
-                  <span
-                    key={i}
-                    className={`edit-word ${extraClass}`}
-                    style={secIdx !== -1 ? { borderBottom: secIdx % 2 === 0 ? '3px solid hsl(var(--section-odd))' : '3px solid hsl(var(--section-even))' } : undefined}
-                    onClick={() => handleWordClick(i)}
-                  >
-                    {word}
-                  </span>
+                  <React.Fragment key={i}>
+                    <span
+                      className={`edit-word ${extraClass}`}
+                      style={secIdx !== -1 ? { borderBottom: secIdx % 2 === 0 ? '3px solid hsl(var(--section-odd))' : '3px solid hsl(var(--section-even))' } : undefined}
+                      onClick={() => handleWordClick(i)}
+                    >
+                      {word}
+                    </span>
+                    {breaksAfter.map((b, bi) => (
+                      b.type === 'petucha' ? <br key={`br-${bi}`} /> : <span key={`sp-${bi}`} style={{ display: 'inline-block', width: '3em' }} />
+                    ))}
+                  </React.Fragment>
                 );
               })}
             </div>

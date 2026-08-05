@@ -4,10 +4,16 @@ export interface Section {
   audioUrl: string | null;
 }
 
+export interface Break {
+  wordIndex: number; // The index of the word AFTER which the break occurs
+  type: 'petucha' | 'setuma';
+}
+
 export interface Verse {
   text: string;
   sections: Section[];
   audioUrl?: string | null;
+  breaks?: Break[];
 }
 
 export interface Unit {
