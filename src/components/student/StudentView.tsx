@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
-import { ChevronRight, ChevronLeft, Play, Clock, BarChart3, Settings, Plus, Trash2 } from 'lucide-react';
+import { Play, Clock, BarChart3, Settings, Plus, Trash2 } from 'lucide-react';
 import StatsModal from '@/components/modals/StatsModal';
 import SettingsModal from '@/components/modals/SettingsModal';
 
 export default function StudentView() {
-  const { state, setState, setFeedback, goToNextVerse, goToPrevVerse, stopAnyAudio, playAudioUrl } = useApp();
+  const { state, setState, setFeedback, stopAnyAudio, playAudioUrl } = useApp();
   const [showStats, setShowStats] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   // playingVerseIdx: which verse's words are currently lit; playingWords: word indices within that verse
@@ -236,16 +236,8 @@ export default function StudentView() {
       </header>
 
       {/* Verses area - show all verses; current verse is highlighted, others are greyed */}
-      <main className="flex-1 min-h-0 relative w-full flex items-center justify-center py-2">
-        <button
-          onClick={goToPrevVerse}
-          disabled={state.currentVerseIndex === 0}
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-card rounded-full shadow flex items-center justify-center text-primary active:bg-muted disabled:opacity-30 z-20 transition"
-        >
-          <ChevronRight size={20} />
-        </button>
-
-        <div className="pasuk-font text-center px-12 py-4 w-full h-full overflow-y-auto select-none verse-scroll" dir="rtl">
+      <main className="flex-1 min-h-0 relative w-full py-2">
+        <div className="pasuk-font text-center px-4 py-4 w-full h-full overflow-y-auto select-none verse-scroll" dir="rtl">
           {unit.verses.map((v, vIdx) => {
             const isCurrentVerse = vIdx === state.currentVerseIndex;
             const verseWords = v.text?.split(' ') || [];
@@ -294,13 +286,6 @@ export default function StudentView() {
           })}
         </div>
 
-        <button
-          onClick={goToNextVerse}
-          disabled={state.currentVerseIndex === unit.verses.length - 1}
-          className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-card rounded-full shadow flex items-center justify-center text-primary active:bg-muted disabled:opacity-30 z-20 transition"
-        >
-          <ChevronLeft size={20} />
-        </button>
       </main>
 
       {/* Bottom panel */}
