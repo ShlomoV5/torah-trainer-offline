@@ -130,7 +130,5 @@ export const PARSHA_LIST: ParshaEntry[] = [
 export const NUSACH_OPTIONS = [
   { value: "ashkenazi", label: "אשכנז" },
   { value: "sephardi", label: "ספרד" },
-  { value: "edot_hamizrach", label: "עדות המזרח" },
-  { value: "teimani", label: "תימן" },
-  { value: "italian", label: "איטלקי" },
+  { value: "edot hamizrach", label: "עדות המזרח" },
 ];

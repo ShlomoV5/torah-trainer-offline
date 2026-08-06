@@ -47,6 +47,9 @@ describe('AdminView Sefaria selection syncing', () => {
       </AppProvider>
     );
 
+    // Toggle custom import on
+    fireEvent.click(screen.getByText('כבוי'));
+
     const fromSelect = screen.getByRole('combobox', { name: 'מפסוק' }) as HTMLSelectElement;
     const toSelect = screen.getByRole('combobox', { name: 'עד פסוק' }) as HTMLSelectElement;
 

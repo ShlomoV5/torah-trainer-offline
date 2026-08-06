@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
 import { Play, Clock, BarChart3, Settings, Plus, Trash2 } from 'lucide-react';
 import StatsModal from '@/components/modals/StatsModal';
@@ -253,32 +253,45 @@ export default function StudentView() {
                   }
                 }}
               >
+                {(v.breaks || []).filter(b => b.wordIndex === -1).map((b, i) => (
+                  b.type === 'petucha' ? <br key={`br-pre-${i}`} /> : <span key={`sp-pre-${i}`} style={{ display: 'inline-block', width: '3em' }} />
+                ))}
                 {verseWords.map((word, index) => {
                   const sectionIndex = (v.sections || []).findIndex(s => index >= s.start && index <= s.end);
                   const isPlaying = isCurrentVerse && playingVerseIdx === vIdx && playingWords.has(index);
+                  const breaksAfter = (v.breaks || []).filter(b => b.wordIndex === index);
 
+                  let wordEl;
                   if (!isCurrentVerse) {
-                    return (
-                      <span key={index} className="word" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                    wordEl = (
+                      <span key={`w-${index}`} className="word" style={{ color: 'hsl(var(--muted-foreground))' }}>
+                        {word}
+                      </span>
+                    );
+                  } else {
+                    let colorClass = 'section-unassigned';
+                    if (sectionIndex !== -1) colorClass = sectionIndex % 2 === 0 ? 'section-odd' : 'section-even';
+                    wordEl = (
+                      <span
+                        key={`w-${index}`}
+                        className={`word ${colorClass} ${isPlaying ? 'playing' : ''}`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (sectionIndex !== -1) playSection(sectionIndex);
+                        }}
+                      >
                         {word}
                       </span>
                     );
                   }
 
-                  let colorClass = 'section-unassigned';
-                  if (sectionIndex !== -1) colorClass = sectionIndex % 2 === 0 ? 'section-odd' : 'section-even';
-
                   return (
-                    <span
-                      key={index}
-                      className={`word ${colorClass} ${isPlaying ? 'playing' : ''}`}
-                      onClick={e => {
-                        e.stopPropagation();
-                        if (sectionIndex !== -1) playSection(sectionIndex);
-                      }}
-                    >
-                      {word}
-                    </span>
+                    <React.Fragment key={index}>
+                      {wordEl}
+                      {breaksAfter.map((b, i) => (
+                        b.type === 'petucha' ? <br key={`br-${i}`} /> : <span key={`sp-${i}`} style={{ display: 'inline-block', width: '3em' }} />
+                      ))}
+                    </React.Fragment>
                   );
                 })}
               </div>
